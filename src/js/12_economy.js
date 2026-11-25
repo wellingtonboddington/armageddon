@@ -223,9 +223,11 @@
     // hub network roads: hub ↔ stops within range (only draw nearest few to keep it readable)
     for (const h of hubs) {
       const near = stops.filter((s) => (s.owner === h.owner || G.isAllied(s.owner, h.owner)) && U.dist2(s.x, s.y, h.x, h.y) <= hr2)
-        .sort((a, b) => U.dist2(a.x, a.y, h.x, h.y) - U.dist2(b.x, b.y, h.x, h.y)).slice(0, 10);
+        .sort((a, b) => U.dist2(a.x, a.y, h.x, h.y) - U.dist2(b.x, b.y, h.x, h.y)).slice(0, 5);
       for (const s of near) addRoad(h, s, 'white', h.owner);
-      for (const h2 of hubs) if (h2 !== h && G.isAllied(h.owner, h2.owner) && U.dist2(h2.x, h2.y, h.x, h.y) <= hr2) addRoad(h, h2, 'white', h.owner);
+      const hh = hubs.filter((h2) => h2 !== h && G.isAllied(h.owner, h2.owner) && U.dist2(h2.x, h2.y, h.x, h.y) <= hr2)
+        .sort((a, b) => U.dist2(a.x, a.y, h.x, h.y) - U.dist2(b.x, b.y, h.x, h.y)).slice(0, 2);
+      for (const h2 of hh) addRoad(h, h2, 'white', h.owner);
     }
     S.roads = Array.from(roads.values());
   };

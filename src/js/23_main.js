@@ -44,6 +44,7 @@
         window.removeEventListener('keydown', start);
         document.getElementById('boot').removeEventListener('click', start);
         MP.audio.unlock();
+        if (MP.settings.get('fullscreen', true)) MP.enterFullscreen();
         MP.SFX.play('phase');
         const b = document.getElementById('boot');
         b.classList.add('out');

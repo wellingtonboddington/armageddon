@@ -7,6 +7,7 @@
   const R = (MP.Render = {});
   let cv, ctx, DPR = 1, VW = 0, VH = 0;
   let terrainCv, terrCv, terrCtx, terrImg, terrData;
+  let softCv, softCtx, softImg, softData, stripeCv, stripeCtx, stripePat;
   let dirtyFlag, dirtyList = [], dirtyCount = 0;
   const cam = { x: 1000, y: 470, z: 1, tx: null, ty: null, tz: null };
   R.cam = cam;
@@ -26,6 +27,16 @@
     terrCtx = terrCv.getContext('2d');
     terrImg = terrCtx.createImageData(World.W, World.H);
     terrData = new Uint32Array(terrImg.data.buffer);
+    softCv = document.createElement('canvas'); softCv.width = World.W; softCv.height = World.H;
+    softCtx = softCv.getContext('2d');
+    softImg = softCtx.createImageData(World.W, World.H);
+    softData = new Uint32Array(softImg.data.buffer);
+    stripeCv = document.createElement('canvas'); stripeCtx = stripeCv.getContext('2d');
+    const pc = document.createElement('canvas'); pc.width = 10; pc.height = 10;
+    const pcx = pc.getContext('2d');
+    pcx.strokeStyle = '#fff'; pcx.lineWidth = 2.2;
+    pcx.beginPath(); pcx.moveTo(-2, 12); pcx.lineTo(12, -2); pcx.moveTo(8, 12); pcx.lineTo(12, 8); pcx.moveTo(-2, 2); pcx.lineTo(2, -2); pcx.stroke();
+    stripePat = stripeCtx.createPattern(pc, 'repeat');
     dirtyFlag = new Uint8Array(World.N);
     cam.z = R.minZoom() * 1.05;
   };
@@ -78,6 +89,8 @@
   R.resetMatch = function () {
     terrData.fill(0);
     terrCtx.putImageData(terrImg, 0, 0);
+    softData.fill(0);
+    softCtx.putImageData(softImg, 0, 0);
     dirtyFlag.fill(0); dirtyList = []; dirtyCount = 0;
     effects.length = 0;
     labelCursor = 1;
@@ -103,10 +116,9 @@
     const c = n.color;
     if (G.isBorderTile(t, o)) {
       // bright border; slight lightening
-      return pack(Math.min(255, c[0] + 40), Math.min(255, c[1] + 40), Math.min(255, c[2] + 40), 255);
+      return pack(Math.min(255, c[0] + 55), Math.min(255, c[1] + 55), Math.min(255, c[2] + 55), 255);
     }
-    if (soft && ((x + y) % 6) < 2) return pack(Math.min(255, c[0] + 60), Math.min(255, c[1] + 60), Math.min(255, c[2] + 60), 125);
-    let a = 92;
+    let a = 105;
     let col = c;
     switch (n.pattern) {
       case 'hazard': if (((x + y) >> 2) & 1) { col = [20, 18, 12]; a = 70; } else a = 105; break;
@@ -130,13 +142,17 @@
       const t = list[i];
       dirtyFlag[t] = 0;
       terrData[t] = tileColor(t);
+      softData[t] = (G.S.owner[t] && G.S.softUntil[t] > G.S.t) ? 0xffffffff : 0;
       const x = t % W, y = (t / W) | 0;
       const k = ((y / CH) | 0) * 64 + ((x / CH) | 0);
       let r = chunks.get(k);
       if (!r) { r = [x, y, x, y]; chunks.set(k, r); }
       else { if (x < r[0]) r[0] = x; if (y < r[1]) r[1] = y; if (x > r[2]) r[2] = x; if (y > r[3]) r[3] = y; }
     }
-    for (const r of chunks.values()) terrCtx.putImageData(terrImg, 0, 0, r[0], r[1], r[2] - r[0] + 1, r[3] - r[1] + 1);
+    for (const r of chunks.values()) {
+      terrCtx.putImageData(terrImg, 0, 0, r[0], r[1], r[2] - r[0] + 1, r[3] - r[1] + 1);
+      softCtx.putImageData(softImg, 0, 0, r[0], r[1], r[2] - r[0] + 1, r[3] - r[1] + 1);
+    }
   }
   R.redrawAll = function () {
     const S = G.S; if (!S) return;
@@ -236,34 +252,49 @@
       const dw = (sx1 - sx0) * cam.z, dh = (sy1 - sy0) * cam.z;
       ctx.drawImage(terrainCv, sx0, sy0, sx1 - sx0, sy1 - sy0, dx, dy, dw, dh);
       if (S) {
-        flushTerritory();
+        if (R.prof) { const t0 = performance.now(); flushTerritory(); R.prof.flush = (R.prof.flush || 0) + performance.now() - t0; } else flushTerritory();
         ctx.drawImage(terrCv, sx0, sy0, sx1 - sx0, sy1 - sy0, dx, dy, dw, dh);
+        // fresh (soft) land: crisp screen-space hatching at every zoom level
+        const bw = cv.width, bh = cv.height;
+        if (stripeCv.width !== bw || stripeCv.height !== bh) { stripeCv.width = bw; stripeCv.height = bh; }
+        stripeCtx.setTransform(1, 0, 0, 1, 0, 0);
+        stripeCtx.globalCompositeOperation = 'source-over';
+        stripeCtx.clearRect(0, 0, bw, bh);
+        stripeCtx.imageSmoothingEnabled = false;
+        stripeCtx.drawImage(softCv, sx0, sy0, sx1 - sx0, sy1 - sy0, (dx + shx) * DPR, (dy + shy) * DPR, dw * DPR, dh * DPR);
+        stripeCtx.globalCompositeOperation = 'source-in';
+        stripeCtx.fillStyle = stripePat;
+        stripeCtx.fillRect(0, 0, bw, bh);
+        ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 0.33;
+        ctx.drawImage(stripeCv, 0, 0);
+        ctx.restore();
       }
     }
     // screen grid (tactical)
     drawGrid();
     if (!S) return;
     ctx.imageSmoothingEnabled = true;
-    updateLabels(6);
-    drawFallout();
-    drawStorms(true);
-    drawRoads();
-    drawRanges();
-    drawAllyLines();
-    drawDeposits();
-    drawStructs();
-    drawConvoys();
-    drawShips();
-    drawCapitals();
-    drawAttacks();
-    drawMissiles();
-    drawEffects(dtReal);
-    drawStorms(false);
-    drawLabels();
-    drawCursor();
+    const P = R.prof;
+    const T = P ? (k, fn) => { const t0 = performance.now(); fn(); P[k] = (P[k] || 0) + performance.now() - t0; } : (k, fn) => fn();
+    T('labelsU', () => updateLabels(6));
+    T('fallout', drawFallout);
+    T('storms', () => drawStorms(true));
+    T('roads', drawRoads);
+    T('ranges', drawRanges);
+    T('ally', drawAllyLines);
+    T('deposits', drawDeposits);
+    T('structs', drawStructs);
+    T('convoys', drawConvoys);
+    T('ships', drawShips);
+    T('capitals', drawCapitals);
+    T('attacks', drawAttacks);
+    T('missiles', drawMissiles);
+    T('effects', () => drawEffects(dtReal));
+    T('storms2', () => drawStorms(false));
+    T('labels', drawLabels);
+    T('cursor', drawCursor);
     miniT -= dtReal;
-    if (miniT <= 0) { miniT = 0.4; drawMinimap(); }
-    drawMiniView();
+    T('mini', () => { if (miniT <= 0) { miniT = 0.4; drawMinimap(); } drawMiniView(); });
   };
 
   function drawGrid() {
@@ -335,12 +366,17 @@
 
   function drawRoads() {
     const S = G.S;
-    if (cam.z < 0.9) return;
+    if (cam.z < 1.1) return;
+    const p = G.player();
+    const showOthers = cam.z >= 3;
     for (const r of S.roads) {
+      const mine = p && (r.owner === p.id || G.isAllied(r.owner, p.id));
+      if (!mine && !showOthers) continue;
       const [x1, y1] = R.w2s(r.x1, r.y1), [x2, y2] = R.w2s(r.x2, r.y2);
       if (Math.max(x1, x2) < -10 || Math.min(x1, x2) > VW + 10 || Math.max(y1, y2) < -10 || Math.min(y1, y2) > VH + 10) continue;
-      if (r.kind === 'white') { ctx.strokeStyle = 'rgba(240,238,225,0.55)'; ctx.lineWidth = Math.max(1.6, cam.z * 0.5); }
-      else { ctx.strokeStyle = 'rgba(160,160,150,0.35)'; ctx.lineWidth = Math.max(1, cam.z * 0.22); }
+      const k = mine ? 1 : 0.4;
+      if (r.kind === 'white') { ctx.strokeStyle = `rgba(240,238,225,${0.42 * k})`; ctx.lineWidth = U.clamp(cam.z * 0.3, 1.2, 3); }
+      else { ctx.strokeStyle = `rgba(170,168,155,${0.3 * k})`; ctx.lineWidth = U.clamp(cam.z * 0.15, 0.8, 1.6); }
       ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
     }
   }
@@ -442,13 +478,14 @@
   function drawStructs() {
     const S = G.S;
     const p = G.player();
-    const base = U.clamp(cam.z * 4.2, 10, 26);
+    const base = U.clamp(cam.z * 3.6, 9, 24);
     R.hoverStruct = null;
     for (const s of S.structs) {
       if (!onScreen(s.x, s.y)) continue;
       const big = s.type === 'city' || s.type === 'silo' || s.type === 'port';
-      if (cam.z < 0.9 && !big) continue;
-      if (cam.z < 0.55) continue;
+      const mine = p && (s.owner === p.id || G.isAllied(s.owner, p.id));
+      if (mine) { if (cam.z < 0.9 && !big) continue; if (cam.z < 0.55) continue; }
+      else { if (cam.z < (big ? 1.7 : 2.6)) continue; }
       const n = S.nations[s.owner];
       const size = Math.round(base * (s.type === 'city' ? 1.05 : 0.92));
       const [sx, sy] = R.w2s(s.x + 0.5, s.y + 0.5);
@@ -575,30 +612,83 @@
     ctx.fillText(text, sx, sy + 0.5);
   }
 
+  // front-line geometry (centre, along-front angle, normal pointing at the attacker), cached briefly
+  function frontGeom(at) {
+    if (at._g && timeNow - at._g.t < 0.35) return at._g;
+    const S = G.S, W = World.W, f = at.front;
+    if (!f.length) return null;
+    const step = Math.max(1, Math.floor(f.length / 90));
+    const xs = [], ys = [];
+    let mx = 0, my = 0;
+    for (let i = 0; i < f.length; i += step) { const t = f[i]; const x = t % W, y = (t / W) | 0; xs.push(x); ys.push(y); mx += x; my += y; }
+    const c = xs.length; mx /= c; my /= c;
+    let cxx = 0, cyy = 0, cxy = 0;
+    for (let i = 0; i < c; i++) { const dx = xs[i] - mx, dy = ys[i] - my; cxx += dx * dx; cyy += dy * dy; cxy += dx * dy; }
+    const ang = 0.5 * Math.atan2(2 * cxy, cxx - cyy);
+    const a = S.nations[at.from];
+    let nx = -Math.sin(ang), ny = Math.cos(ang);
+    const ax = a && a.tiles ? a.sx / a.tiles : mx, ay = a && a.tiles ? a.sy / a.tiles : my;
+    if ((ax - mx) * nx + (ay - my) * ny < 0) { nx = -nx; ny = -ny; }
+    let la = ang; if (la > Math.PI / 2) la -= Math.PI; if (la < -Math.PI / 2) la += Math.PI;
+    at._g = { t: timeNow, x: mx, y: my, ang: la, nx, ny };
+    return at._g;
+  }
+
+  function frontNumber(x, y, ang, text, px, fill, accent) {
+    const [sx, sy] = R.w2s(x, y);
+    ctx.save();
+    ctx.translate(sx, sy); ctx.rotate(ang);
+    ctx.font = `800 ${px}px ${MP.FONT_HEAD}`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+    ctx.strokeStyle = 'rgba(4,4,3,0.85)'; ctx.lineWidth = Math.max(3, px * 0.22);
+    ctx.strokeText(text, 0, 0);
+    ctx.fillStyle = fill; ctx.fillText(text, 0, 0);
+    if (accent) { const w = ctx.measureText(text).width; ctx.fillStyle = accent; ctx.fillRect(-w / 2, px * 0.58, w, Math.max(1.5, px * 0.09)); }
+    ctx.restore();
+  }
+
   function drawAttacks() {
     const S = G.S, p = G.player();
-    if (!p) return;
+    const fs = U.clamp(cam.z * 4.2, 11, 22);
     for (const at of S.attacks) {
       if (at.done || !at.front.length) continue;
-      const mine = at.from === p.id, onUs = at.to === p.id;
-      if (!mine && !onUs) continue;
-      // centre of a few frontier tiles
-      let mx = 0, my = 0, c = 0;
-      const step = Math.max(1, Math.floor(at.front.length / 12));
-      for (let i = 0; i < at.front.length; i += step) { const t = at.front[i]; mx += t % World.W; my += (t / World.W) | 0; c++; }
-      mx /= c; my /= c;
-      if (!onScreen(mx, my)) continue;
-      const [sx, sy] = R.w2s(mx, my);
-      if (mine) pill(sx, sy, '⊕ ' + U.fmtK(at.troops), '#ece6cf', 'rgba(14,13,10,0.85)', 'rgba(166,227,90,0.8)');
-      else {
-        pill(sx, sy, '▼ ' + U.fmtK(at.troops), '#fff', 'rgba(120,20,10,0.85)', '#ff4433');
-        // red glow along their front
+      const mine = p && at.from === p.id, onUs = p && at.to === p.id;
+      const watch = !p || S.opts.mode === 'watch';
+      if (!mine && !onUs && (cam.z < (watch ? 1.0 : 2.2) || at.troops < 2500)) continue;
+      const g = frontGeom(at);
+      if (!g || !onScreen(g.x, g.y, 80)) continue;
+      if (onUs) {
         ctx.fillStyle = 'rgba(255,68,51,0.35)';
         const sz = Math.max(2, cam.z);
         for (let i = 0; i < at.front.length; i += Math.max(1, Math.floor(at.front.length / 300))) {
           const t = at.front[i]; const [fx, fy] = R.w2s(t % World.W, (t / World.W) | 0); ctx.fillRect(fx, fy, sz, sz);
         }
       }
+      const off = (fs * 0.85) / cam.z + 1.2;
+      const an = S.nations[at.from], dn = at.to ? S.nations[at.to] : null;
+      // the attacker's committed troops — on the attacker's side of the line
+      frontNumber(g.x + g.nx * off, g.y + g.ny * off, g.ang, U.fmtInt(at.troops), fs,
+        onUs ? '#ffc2b8' : '#ffffff', an ? U.rgb(an.color) : null);
+      // defenders show a number only once they commit troops to this front
+      if (dn && at.def > 0) frontNumber(g.x - g.nx * off, g.y - g.ny * off, g.ang, U.fmtInt(at.def), fs * 0.9, mine ? '#ffc2b8' : '#ffffff', U.rgb(dn.color));
+    }
+    // encircled pockets
+    if (S.pockets) for (const pk of S.pockets) {
+      const inv = p && (pk.nation === p.id || pk.by === p.id);
+      if (!inv && cam.z < 1.3) continue;
+      if (!onScreen(pk.x, pk.y)) continue;
+      const [sx, sy] = R.w2s(pk.x, pk.y);
+      const r = Math.max(8, Math.sqrt(pk.size) * cam.z * 0.6);
+      ctx.save();
+      ctx.strokeStyle = pk.nation === p?.id ? 'rgba(255,68,51,0.9)' : 'rgba(236,230,207,0.85)'; ctx.lineWidth = 2;
+      ctx.setLineDash([3, 4]); ctx.lineDashOffset = -timeNow * 12;
+      ctx.beginPath(); ctx.arc(sx, sy, r, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+      ctx.restore();
+      ctx.font = `700 ${U.clamp(fs * 0.8, 10, 17)}px ${MP.FONT_HEAD}`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.lineJoin = 'round';
+      const txt = U.fmtInt(pk.troops) + ' Encircled';
+      ctx.strokeStyle = 'rgba(4,4,3,0.85)'; ctx.lineWidth = 3; ctx.strokeText(txt, sx, sy - r - 3);
+      ctx.fillStyle = pk.nation === p?.id ? '#ff8a7a' : 'rgba(236,230,207,0.92)'; ctx.fillText(txt, sx, sy - r - 3);
     }
   }
 
@@ -729,30 +819,42 @@
 
   function drawLabels() {
     const S = G.S, p = G.player();
-    const minPx = 8;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const items = [];
     for (const n of S.nations) {
       if (!n || !n.alive || !n.label) continue;
       const L = n.label;
-      let px = L.size * cam.z;
-      if (n === p) px = Math.max(px, 11);
-      if (px < minPx) continue;
-      px = Math.min(px, 46);
+      const me = n === p;
+      let px = L.size * cam.z * 0.8;
+      if (me) px = Math.max(px, 12);
+      if (px < 9) continue;
+      px = Math.min(px, me ? 34 : 28);
       if (!onScreen(L.x, L.y, px * n.name.length)) continue;
+      items.push({ n, px, me });
+    }
+    // player first, then biggest — later labels that would overlap are skipped
+    items.sort((a, b) => (b.me - a.me) || (b.px - a.px));
+    const placed = [];
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+    for (const it of items) {
+      const n = it.n, L = n.label, px = it.px, me = it.me;
       const [sx, sy] = R.w2s(L.x, L.y);
+      ctx.font = `900 ${px}px ${MP.FONT_HEAD}`;
+      const spacing = px * 0.14;
+      const text = n.name;
+      const ws = []; let total = 0;
+      for (const ch of text) { const w = ctx.measureText(ch).width; ws.push(w); total += w + spacing; }
+      total -= spacing;
+      const cs = Math.abs(Math.cos(L.ang)), sn = Math.abs(Math.sin(L.ang)), hh = px * 1.75;
+      const bw = total * cs + hh * sn, bh = total * sn + hh * cs;
+      const box = [sx - bw / 2, sy - bh / 2, sx + bw / 2, sy + bh / 2];
+      if (!me && placed.some((b) => b[0] < box[2] && b[2] > box[0] && b[1] < box[3] && b[3] > box[1])) continue;
+      placed.push(box);
       ctx.save();
       ctx.translate(sx, sy); ctx.rotate(L.ang);
       const c = n.color;
-      ctx.font = `900 ${px}px ${MP.FONT_HEAD}`;
-      const spacing = px * 0.18;
-      const text = n.name;
-      // measure with spacing
-      let total = 0; const ws = [];
-      for (const ch of text) { const w = ctx.measureText(ch).width; ws.push(w); total += w + spacing; }
-      total -= spacing;
-      const arcR = total * 2.6; // gentle arc
+      const arcR = total * 3.2;
       let x = -total / 2;
-      ctx.lineJoin = 'round';
+      const fill = me ? '#fff4c8' : U.rgb(U.mix(c, [255, 255, 255], 0.6), 0.92);
       for (let i = 0; i < text.length; i++) {
         const ch = text[i], w = ws[i];
         const cx = x + w / 2;
@@ -760,21 +862,20 @@
         const yOff = arcR - Math.cos(ang) * arcR;
         ctx.save();
         ctx.translate(cx, yOff - px * 0.2); ctx.rotate(ang);
-        ctx.strokeStyle = 'rgba(5,5,4,0.75)'; ctx.lineWidth = Math.max(2, px * 0.16);
+        ctx.strokeStyle = 'rgba(5,5,4,0.85)'; ctx.lineWidth = Math.max(2.5, px * 0.2);
         ctx.strokeText(ch, 0, 0);
-        ctx.fillStyle = n === p ? '#fff4c8' : U.rgb(U.mix(c, [255, 255, 255], 0.55));
+        ctx.fillStyle = fill;
         ctx.fillText(ch, 0, 0);
         ctx.restore();
         x += w + spacing;
       }
-      if (px >= 10) {
-        const tp = Math.max(9, px * 0.42);
-        ctx.font = `bold ${tp}px ${MP.FONT_MONO}`;
-        ctx.strokeStyle = 'rgba(5,5,4,0.8)'; ctx.lineWidth = 3;
-        const tt = U.fmtK(n.troops);
-        ctx.strokeText(tt, 0, px * 0.72); ctx.fillStyle = U.rgb(U.mix(c, [255, 255, 255], 0.3)); ctx.fillText(tt, 0, px * 0.72);
-      }
-      if (n.traitorUntil > S.t && px > 10) { ctx.font = `bold ${Math.max(8, px * 0.32)}px ${MP.FONT_MONO}`; ctx.fillStyle = '#ff4433'; ctx.fillText('⚠ TRAITOR', 0, -px * 0.85); }
+      const tp = Math.max(9, px * 0.45);
+      ctx.font = `bold ${tp}px ${MP.FONT_MONO}`;
+      ctx.strokeStyle = 'rgba(5,5,4,0.85)'; ctx.lineWidth = 3;
+      const tt = U.fmtK(n.troops);
+      ctx.strokeText(tt, 0, px * 0.74); ctx.fillStyle = U.rgb(U.mix(c, [255, 255, 255], 0.35)); ctx.fillText(tt, 0, px * 0.74);
+      if (p && p.targetId === n.id) { ctx.font = `bold ${Math.max(9, px * 0.38)}px ${MP.FONT_MONO}`; ctx.fillStyle = '#ff4433'; ctx.fillText('⌖ ALLIED TARGET', 0, -px * 0.9); }
+      else if (n.traitorUntil > S.t && px > 10) { ctx.font = `bold ${Math.max(8, px * 0.32)}px ${MP.FONT_MONO}`; ctx.fillStyle = '#ff4433'; ctx.fillText('⚠ TRAITOR', 0, -px * 0.85); }
       ctx.restore();
     }
   }

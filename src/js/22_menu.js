@@ -220,7 +220,7 @@
       </div>
       <div class="m-tr">
         <span class="scrap"><img class="ico" src="${MP.Icons.url('gear', '#ffd21f', 32)}"> ${U.fmtInt(P.scrap)}</span>
-        <button class="btn m-top" id="m-ranks">RANKS</button><button class="btn m-top" id="m-shop">ARMORY</button><button class="btn icon m-top" id="m-settings">${MP.Icons.svgIcon('gear', '#ece6cf', 32)}</button>
+        <button class="btn m-top" id="m-ranks">RANKS</button><button class="btn m-top" id="m-shop">ARMORY</button><button class="btn m-top" id="m-fs" title="Toggle fullscreen">⛶</button><button class="btn icon m-top" id="m-settings">${MP.Icons.svgIcon('gear', '#ece6cf', 32)}</button>
       </div>
       <div class="m-center">
         <h1 class="m-title" data-text="MIDNIGHT PROTOCOL">MIDNIGHT PROTOCOL</h1>
@@ -263,6 +263,7 @@
     $('m-ranks').onclick = Menu.openRanks;
     $('m-shop').onclick = Menu.openShop;
     $('m-settings').onclick = () => Menu.openSettings(false);
+    $('m-fs').onclick = () => MP.toggleFullscreen();
     $('m-party-on').onchange = (e) => { P.partyOn = e.target.checked; Menu.save(); Menu.render(); };
     root.querySelectorAll('.party-slots [data-pi]').forEach((b) => { b.onclick = () => Menu.editPartyBot(Number(b.dataset.pi)); });
     root.querySelectorAll('.reroll').forEach((b) => { b.onclick = () => {
@@ -371,6 +372,7 @@
     if (!opts) opts = Menu.makeOpts('ffa');
     Menu.lastOpts = Object.assign({}, opts, { seed: (Math.random() * 4294967295) >>> 0 });
     MP.audio.unlock();
+    if (MP.settings.get('fullscreen', true)) MP.enterFullscreen();
     Menu.hide();
     document.getElementById('modal-root').innerHTML = '';
     MP.Game.newMatch(opts);
@@ -650,6 +652,7 @@
         <label>VOICE <select id="st-vname"><option value="">AUTO (FEMALE)</option>${voices.map((v) => `<option value="${U.esc(v.name)}" ${v.name === cur ? 'selected' : ''}>${U.esc(v.name)} ${v.female ? '♀' : ''} (${v.lang})</option>`).join('')}</select></label>
         <label>SPEECH RATE <b id="st-rate-v">${S.get('advisor.rate', 1).toFixed ? Number(S.get('advisor.rate', 1)).toFixed(2) : 1}</b><input type="range" min="0.8" max="1.3" step="0.02" value="${S.get('advisor.rate', 1)}" id="st-rate"></label>
         <label class="ck"><input type="checkbox" id="st-tut" ${S.get('tutorial', true) ? 'checked' : ''}> TUTORIAL BRIEFINGS</label>
+        <label class="ck"><input type="checkbox" id="st-fs" ${S.get('fullscreen', true) ? 'checked' : ''}> AUTO FULLSCREEN</label>
       </div>
       ${inMatch ? '' : '<div class="row-btns"><button class="btn danger" data-a="reset">RESET PROGRESS</button></div>'}`,
     (box, close) => {
@@ -659,6 +662,7 @@
       box.querySelector('#st-vname').onchange = (e) => { MP.Advisor && MP.Advisor.setVoiceName(e.target.value || null); MP.Advisor && MP.Advisor.say('Voice check. Channel is clear.', { priority: 1 }); };
       box.querySelector('#st-rate').oninput = (e) => { S.set('advisor.rate', Number(e.target.value)); box.querySelector('#st-rate-v').textContent = Number(e.target.value).toFixed(2); MP.Advisor && MP.Advisor.setRate(Number(e.target.value)); };
       box.querySelector('#st-tut').onchange = (e) => S.set('tutorial', e.target.checked);
+      box.querySelector('#st-fs').onchange = (e) => { S.set('fullscreen', e.target.checked); if (e.target.checked) MP.enterFullscreen(); };
       box.addEventListener('click', (e) => {
         const b = e.target.closest('[data-a]'); if (!b) return;
         const a = b.dataset.a;

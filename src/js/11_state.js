@@ -293,7 +293,7 @@
       const ur = Math.round(v.uranium * C.CAPITAL_LOOT_URANIUM) + 20;
       v.credits = Math.max(0, v.credits - cr); v.uranium = Math.max(0, v.uranium - ur);
       a.credits += cr; a.uranium += ur;
-      MP.FX && MP.FX.floatText(v.capX, v.capY, '+' + U.fmtInt(cr), [255, 210, 31], '+' + ur);
+      if (a.isPlayer || v.isPlayer) MP.FX && MP.FX.floatText(v.capX, v.capY, '+' + U.fmtInt(cr), [255, 210, 31], '+' + ur);
       if (a.isPlayer) { S.stats.capitals++; MP.Game.notify('capital.taken', { nation: v.name, credits: U.fmtInt(cr), uranium: ur }); }
       if (v.isPlayer) MP.Game.notify('capital.lost', { nation: a.name });
       MP.Game.wire('OSINT', `${a.name} TAKES THE CAPITAL OF ${v.name}`, v.isPlayer ? 'bad' : 'osint');

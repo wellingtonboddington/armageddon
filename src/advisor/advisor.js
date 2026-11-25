@@ -914,7 +914,7 @@
   function toSpeech(s) {
     return s.replace(/[☢▮●·•▸►◆▲■□|]/g, ' ')
       .replace(/\s*[—–]\s*/g, ', ')
-      .replace(/\bMIRV(s?)\b/g, 'merv$1')
+      .replace(/\bMIRV(s?)\b/g, 'Merv$1')
       .replace(/\bVESPER\b/g, 'Vesper')
       .replace(/(^|\s)'(\d\d)\b/g, function (m, a, yy) { return a + '20' + yy; })   // '29 -> 2029
       .replace(/×/g, ' times ')
@@ -1023,8 +1023,8 @@
     'xxxxccccxcccccccccccccccccccccccDcccccccccccccccccccccccCcccCCCE'
   ];
   const PAL = {
-    // hair: near-black with olive-charcoal sheen, dim-yellow rim light
-    K: '#040302', k: '#0e0c08', h: '#1f1b12', H: '#353020', G: '#4d4630', j: '#5c4c0e',
+    // hair: dark charcoal-brown with a readable olive sheen and a dim-yellow rim light
+    K: '#120f09', k: '#2a2416', h: '#433924', H: '#5f5236', G: '#7f6e44', j: '#937616',
     // the hazard-yellow streak
     Y: '#ffd21f', y: '#e0a812', z: '#8a6a0c',
     // skin ramp: umber shadows -> amber -> hazard yellow -> warm white
@@ -1272,9 +1272,9 @@
    * ======================================================================================= */
   const synth = (function () { try { return window.speechSynthesis || null; } catch (e) { return null; } })();
   const SSU = typeof window.SpeechSynthesisUtterance === 'function' ? window.SpeechSynthesisUtterance : null;
-  const TTS = { ok: !!(synth && SSU), voices: [], voice: null, tune: null, polls: 0, fails: 0, broken: false, blocked: false, gesture: false, utter: [], keepAlive: 0 };
+  const TTS = { ok: !!(synth && SSU), voices: [], voice: null, tune: null, fails: 0, broken: false, blocked: false, gesture: false, utter: [], keepAlive: 0 };
   const FEMALE_RX = /\b(female|woman|samantha|victoria|karen|moira|tessa|fiona|serena|zira|hazel|susan|aria|jenny|libby|sonia|natasha|clara|emma|ava|allison|kate|kathy|vicki|veena|zoe|zoey|nicky|agnes|martha|catherine|heera|linda|eva|cortana|michelle|ana|ashley|cora|elizabeth|jane|nancy|sara|sarah|amber|monica|maisie|hollie|bella|abbi|olivia|mia|neerja|leah|emily|molly|annette|freya|elsie|joanna|kimberly|salli|kendra|ivy|nicole|amy|ruth|isla|imogen|alice|anna|helena|laura|lucia|paulina|yuna|tingting|sinji|kyoko|ellen|nora|alva|satu|zuzana|mariska|ioana|melina|carmit|lekha|damayanti|kanya|lana|yelda|milena|stephanie|shelley|sandy|flo|grandma|princess)\b/i;
-  const MALE_RX = /\b(male|man|david|mark|george|daniel|alex|fred|ryan|guy|thomas|oliver|james|brian|arthur|rishi|aaron|gordon|lee|tom|junior|ralph|albert|bruce|eddy|reed|rocko|grandpa|christopher|eric|roger|steffan|william|liam|connor|andrew|brandon|davis|jason|tony|ravi|prabhat|sean|mitchell|ken|luke|noah|elliot|ethan|harry|jacob|kai|neil|duncan|aarav|jorge|diego|juan|carlos|thomas|xander|maged|tarik|yuri|aleksandr|felix|hemant|rafael|gordon)\b/i;
+  const MALE_RX = /\b(male|man|david|mark|george|daniel|alex|fred|ryan|guy|thomas|oliver|james|brian|arthur|rishi|aaron|gordon|lee|tom|junior|ralph|albert|bruce|eddy|reed|rocko|grandpa|christopher|eric|roger|steffan|william|liam|connor|andrew|brandon|davis|jason|tony|ravi|prabhat|sean|mitchell|ken|luke|noah|elliot|ethan|harry|jacob|kai|neil|duncan|aarav|jorge|diego|juan|carlos|xander|maged|tarik|yuri|aleksandr|felix|hemant|rafael)\b/i;
   const NOVELTY_RX = /\b(albert|bad news|bahh|bells|boing|bubbles|cellos|good news|jester|organ|superstar|trinoids|whisper|wobble|zarvox|deranged|hysterical|princess|grandma|grandpa)\b/i;
   const ANDROID_F = /-x-(sfg|iob|iog|tpc|tpf|gba|gbc|gbg|aua|auc|ahp|cxx)/i;
   const ANDROID_M = /-x-(iol|iom|tpd|gbb|gbd|rjs|aub|aud|ena|end)/i;
@@ -1426,7 +1426,7 @@
   let inited = false, mode = 'idle', cur = null, gapUntil = 0, lineSeq = 0, hostHint = '';
   const Q = [], MAXQ = 4;
   const lastFire = Object.create(null), tutDone = Object.create(null);
-  let greetAt = 0, lastGreetAt = -1e9, lastReturnAt = -1e9, chatterAt = 0, lastLineAt = 0;
+  let greetAt = 0, lastGreetAt = -1e9, lastReturnAt = -1e9, chatterAt = 0;
   let speakingFlag = false, alertUntil = 0, glitchUntil = 0;
 
   function ttlFor(it) { return it.tut ? 25 : it.priority >= 3 ? 20 : it.priority === 2 ? 15 : 8; }
@@ -1510,7 +1510,9 @@
     const t = nowS();
     if (item.priority >= 3 || item.intr) {
       if (cur && cur.state !== 'done' && (cur.priority >= 3 || cur.intr) && cur.priority >= item.priority) {
-        Q.unshift(item); trimQueue(); return true;             // never cut off another critical line
+        let at = 0;                                              // never cut off another critical line;
+        while (at < Q.length && (Q[at].priority >= 3 || Q[at].intr)) at++;   // wait behind earlier ones (FIFO)
+        Q.splice(at, 0, item); return trimQueue(item);
       }
       if (allowedIn(item, mode)) { interrupt(); play(item); return true; }
     }
@@ -1549,10 +1551,9 @@
     cur = item;
     item.state = 'typing'; item.start = t; item.lastT = t; item.pos = 0; item.wait = 0; item.len = item.text.length;
     item.shown = -1; item.mode = 'text'; item.id = ++lineSeq;
-    lastLineAt = t;
     if (mode === 'menu') scheduleChatter(t);
     emit('advisor:line', { text: item.text, key: item.key || '', priority: item.priority });
-    if (item.priority >= 3 && !item.intr) { alertUntil = t + 3.2; glitchUntil = t + 0.7; anim.glitchSeed = 0; }
+    if (item.priority >= 3 && !item.intr) { alertUntil = t + 3.2; glitchUntil = t + 0.7; }
     else alertUntil = Math.min(alertUntil, t);
     anim.gazeUntil = 0; anim.gaze = 0;
     lineDOM(item);
@@ -1573,7 +1574,7 @@
   function setSpeaking(on) {
     if (on === speakingFlag) return;
     speakingFlag = on;
-    emit('advisor:speaking', { on: on });
+    emit('advisor:speaking', { on: on, voice: !!(on && cur && cur.mode === 'voice') });
     applyClasses();
   }
   function scheduleChatter(t) { chatterAt = t + 35 + Math.random() * 25; }
@@ -1796,7 +1797,7 @@
   /* =========================================================================================
    * ANIMATION
    * ======================================================================================= */
-  const anim = { blinkAt: 2, blinkDouble: false, gaze: 0, gazeUntil: 0, nextGlance: 6, mSlot: -1, mId: 0, mVal: 0, glitchSeed: 0, phase: Math.random() * 10 };
+  const anim = { blinkAt: 2, blinkDouble: false, gaze: 0, gazeUntil: 0, nextGlance: 6, mSlot: -1, mId: 0, mVal: 0, phase: Math.random() * 10 };
   function animState(t) {
     let eye = 0;
     if (t >= anim.blinkAt) {
@@ -1965,10 +1966,11 @@
     applyClasses();
   }
   function setVolume(v) {
-    S.volume = clamp(+v || 0, 0, 1); sset('advisor.volume', S.volume);
+    v = +v; if (!isFinite(v)) return;
+    S.volume = clamp(v, 0, 1); sset('advisor.volume', S.volume);
     try { for (const u of TTS.utter) u.volume = ttsVolume(); } catch (e) { /* live change unsupported */ }
   }
-  function setRate(r) { S.rate = clamp(+r || 1, 0.8, 1.3); sset('advisor.rate', S.rate); }
+  function setRate(r) { r = +r; if (!isFinite(r)) return; S.rate = clamp(r, 0.8, 1.3); sset('advisor.rate', S.rate); }
   function listVoices() {
     if (TTS.ok && !TTS.voices.length) loadVoices();
     return TTS.voices.map(function (v) { return { name: v.name, lang: v.lang, female: gender(v) === true, local: !!v.localService, default: !!v.default }; });

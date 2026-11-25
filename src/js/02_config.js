@@ -38,12 +38,12 @@
     FORT_COST_MULT: 5, FORT_SLOW: 3, FORT_RADIUS: 50, // designer
     SUPPLY_FREE: 120, SUPPLY_SPAN: 300, SUPPLY_MAX_PENALTY: 0.6,
 
-    TERRAIN_COST: [3, 4, 4, 4],          // biome: plains, forest, desert, tundra (troops/tile, unclaimed)
+    TERRAIN_COST: [2, 3, 3, 3],          // biome: plains, forest, desert, tundra (troops/tile, unclaimed)
     ELEV_COST: [1, 1.6, 3],              // lowland, highlands, mountains
     ELEV_SPEED: [1, 0.8, 0.5],
     DENSITY_COST: 1.0,                   // attacker troops per defender troop-density per tile
     DENSITY_LOSS: 0.7,                   // defender troops lost per tile captured × density
-    ATTACK_SPEED_BASE: 8, ATTACK_SPEED_SQRT: 1 / 6, EXPAND_SPEED_MULT: 1.5,
+    ATTACK_SPEED_BASE: 14, ATTACK_SPEED_SQRT: 1 / 4, EXPAND_SPEED_MULT: 2.6,
 
     CAPITAL_LOOT_CREDITS: 0.25, CAPITAL_LOOT_URANIUM: 0.3, // obs +1,450 / +104 on a small capital
     ATTACK_PRESETS: [0.10, 0.25, 0.35, 0.50, 0.75],          // obs

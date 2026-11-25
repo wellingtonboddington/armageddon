@@ -91,6 +91,13 @@ img.flag.xl { width: 96px; height: 64px; }
 .lbr.partner { color: var(--cyan); }
 .attacks .atr { display: grid; grid-template-columns: 1fr 54px 66px; gap: 6px; align-items: center; padding: 4px 9px; border-top: 1px solid #221f16; }
 .atr .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .atr .tr { text-align: right; }
+.attacks .atr.in { background: rgba(255, 68, 51, .06); }
+.attacks .atr.in .nm { color: #ffb3a8; }
+.attacks .def { color: var(--cyan); font-style: normal; font-size: 10px; }
+.attacks .defend { border-color: var(--cyan); color: var(--cyan); }
+.target-chip { padding: 6px 9px; font-size: 11px; display: flex; gap: 6px; align-items: center; border-color: var(--red); }
+.target-chip .t { color: var(--red); letter-spacing: .1em; font-size: 10px; }
+.target-chip b { flex: 1; }
 .effects .efr { display: flex; justify-content: space-between; padding: 2px 9px 4px; font-size: 11px; }
 
 /* advisor + wire */

@@ -93,7 +93,7 @@
       return at;
     }
     at = { id: S.nextAttackId++, from, to, troops, initial: troops, front: [], inFront: new Set(), budget: 0, done: false,
-      boat: !!(opts && opts.boat), started: S.t, captured: 0, idle: 0 };
+      boat: !!(opts && opts.boat), started: S.t, captured: 0, idle: 0, def: 0, defPeak: 0, defNext: S.t + 1.5 + S.rng() * 2.5 };
     S.attacks.push(at);
     if (opts && opts.seed != null) War.seedFrom(at, opts.seed); else War.refreshFrontier(at);
     if (to) War.declareWar(from, to);
@@ -198,6 +198,7 @@
       const a = S.nations[at.from];
       if (!a.alive) { at.done = true; continue; }
       if (at.to && (!S.nations[at.to].alive || !G.canAttack(at.from, at.to))) { War.finish(at, true); continue; }
+      if (at.to && S.t >= at.defNext) War.aiDefend(at);
       let speed = (C.ATTACK_SPEED_BASE + Math.sqrt(Math.max(0, at.troops)) * C.ATTACK_SPEED_SQRT) * G.mod(a, 'attackSpeed');
       if (!at.to) speed *= C.EXPAND_SPEED_MULT;
       at.budget += speed * dt;
@@ -219,6 +220,12 @@
         for (const u of neighbors(t)) if (u >= 0 && owner[u] === at.from) { touch = true; break; }
         if (!touch) continue;
         const tc = War.tileCost(at, t);
+        let defCost = 0;
+        if (at.def > 0) { // committed defenders hold the line: each tile costs more and is taken slower
+          defCost = Math.min(at.def, at.def / Math.max(25, at.front.length) * 1.4 + 2);
+          tc.cost += defCost * 1.2;
+          tc.slow *= 1 + Math.min(2, at.def / Math.max(1, at.troops));
+        }
         if (at.troops < tc.cost) {
           at.inFront.add(t); at.front.push(t);
           War.finish(at, false);
@@ -227,6 +234,7 @@
         at.troops -= tc.cost;
         at.budget -= tc.slow;
         at.idle = 0;
+        if (defCost) at.def = Math.max(0, at.def - defCost);
         if (at.to) {
           const d = S.nations[at.to];
           const loss = Math.min(d.troops, (d.troops / Math.max(1, d.tiles)) * C.DENSITY_LOSS);
@@ -249,8 +257,29 @@
     at.done = true;
     if (returnTroops && a && a.alive && at.troops > 0) a.troops += at.troops;
     const d = at.to ? S.nations[at.to] : null;
+    if (d && d.alive && at.def > 0) { d.troops += at.def; at.def = 0; } // surviving defenders stand down
     if (d && d.isPlayer && d.alive && at.captured < 40 && S.t - at.started > 3) MP.Game.notify('attack.repelled', { nation: a.name });
     if (a && a.isPlayer && !returnTroops && at.captured < 5) MP.Game.notify('attack.stalled', {});
+  };
+
+  // defender commits troops to hold a front (shown as the defender's number on the map)
+  War.commitDefense = function (at, amount) {
+    const S = G.S, d = S.nations[at.to];
+    if (!d || !d.alive || at.done) return 0;
+    amount = Math.min(amount, d.troops);
+    if (amount < 50) return 0;
+    d.troops -= amount; at.def += amount; at.defPeak = Math.max(at.defPeak, at.def);
+    return amount;
+  };
+  War.aiDefend = function (at) {
+    const S = G.S, d = S.nations[at.to];
+    at.defNext = S.t + 6 + S.rng() * 4;
+    if (!d || !d.ai || !d.alive) return;
+    const pers = C.PERSONALITIES[d.personality] || C.PERSONALITIES.opportunist;
+    if (at.troops < d.troops * 0.06 && at.troops < 3000) return;           // a probe: not worth committing
+    if (at.def > at.troops * 0.5) return;                                    // the line already holds
+    const want = Math.min(d.troops * (0.22 + pers.defense * 0.2), at.troops * (0.55 + pers.defense * 0.35)) - at.def;
+    if (want > 0) War.commitDefense(at, want);
   };
 
   War.recall = function (at) {
@@ -262,6 +291,7 @@
   War.pocketCursor = 1;
   War.tickPockets = function () {
     const S = G.S;
+    if (S.pockets) for (let i = S.pockets.length - 1; i >= 0; i--) if (S.t - S.pockets[i].seen > 16 || !S.nations[S.pockets[i].nation].alive) S.pockets.splice(i, 1);
     const nn = S.nations.length;
     for (let tries = 0; tries < nn; tries++) {
       War.pocketCursor = War.pocketCursor % (nn - 1) + 1;
@@ -309,6 +339,23 @@
       let best = 0, bc = 0;
       for (const [o, cnt] of c.nb) if (cnt > bc && G.canAttack(o, id)) { bc = cnt; best = o; }
       if (!best) continue;
+      let cx = 0, cy = 0; for (const t of c.tiles) { cx += t % w; cy += (t / w) | 0; } cx /= c.size; cy /= c.size;
+      S.pockets = S.pockets || [];
+      const trapped = n.troops * c.size / Math.max(1, n.tiles);
+      let pk = S.pockets.find((q) => q.nation === id && U.dist2(q.x, q.y, cx, cy) < 900);
+      const notable = c.size >= 25 || (n.isPlayer && c.size >= 8);
+      if (!pk && notable) {
+        S.pockets.push({ nation: id, by: best, x: cx, y: cy, troops: trapped, size: c.size, seen: S.t, annexAt: S.t + 7 });
+        const byN = S.nations[best];
+        if (n.isPlayer) { MP.Game.notify('pocket.cut', {}); MP.Game.wire('IMINT', `${U.fmtInt(trapped)} OF YOUR TROOPS ENCIRCLED BY ${byN.name}`, 'bad'); }
+        else if (byN && byN.isPlayer) MP.Game.wire('IMINT', `${U.fmtInt(trapped)} ${n.name} TROOPS ENCIRCLED`, 'good');
+        continue;
+      }
+      if (pk) {
+        pk.seen = S.t; pk.troops = trapped; pk.x = cx; pk.y = cy; pk.by = best; pk.size = c.size;
+        if (S.t < pk.annexAt) continue;
+        S.pockets.splice(S.pockets.indexOf(pk), 1);
+      }
       for (const t of c.tiles) G.setOwner(t, best, C.DUG_IN_SECONDS);
       // pocketed troops are lost
       n.troops *= 1 - Math.min(0.5, c.size / Math.max(1, n.tiles + c.size));

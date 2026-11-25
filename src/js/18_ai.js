@@ -207,6 +207,12 @@
 
   AI.pickTarget = function (n, pers) {
     const S = G.S, ai = n.ai;
+    if (ai.focus) {
+      const f = S.nations[ai.focus];
+      if (!f || !f.alive || ai.focusUntil < S.t || G.isAllied(n.id, f.id)) ai.focus = 0;
+      else if (ai.neighbors.has(f.id) && G.canAttack(n.id, f.id)) return f;
+      else if (S.t - ai.lastBoat > 30 && n.troops > n.cap * 0.4) { AI.boatAttackOn(n, f); }
+    }
     let best = null, bs = 0;
     const myS = MP.Diplo.strength(n);
     const myDensity = n.troops / Math.max(1, n.tiles);
@@ -250,6 +256,18 @@
     MP.Naval.launchTransport(n, best, n.troops * 0.3);
   };
 
+  AI.boatAttackOn = function (n, f) {
+    const S = G.S, W = World.W;
+    n.ai.lastBoat = S.t;
+    const coast = [];
+    let k = 0;
+    for (const t of f.border) { if (World.coast[t] && (k++ % 5) === 0) coast.push(t); if (coast.length > 60) break; }
+    if (!coast.length) return;
+    let best = coast[0], bd = 1e18;
+    for (const t of coast) { const d = U.dist2(t % W, (t / W) | 0, n.capX, n.capY); if (d < bd) { bd = d; best = t; } }
+    MP.Naval.launchTransport(n, best, n.troops * 0.3);
+  };
+
   AI.onStruck = function (v, attacker, w) {
     const ai = v.ai;
     if (!ai) return;
@@ -268,10 +286,11 @@
     else if (!late && S.t - ai.lastNuke > 110 / (pers.nuke * nukeMul) && S.rng() < 0.07 * pers.nuke * nukeMul) {
       // strike a stronger enemy we're at war with, or a grudge
       let bs = 0;
+      if (ai.focus && S.nations[ai.focus] && S.nations[ai.focus].alive) n.wars.add(ai.focus);
       for (const o of n.wars) {
         const e = S.nations[o];
         if (!e || !e.alive || G.isAllied(n.id, o)) continue;
-        let s = MP.Diplo.strength(e) / Math.max(1, MP.Diplo.strength(n)) + (ai.grudge.get(o) || 0) * 0.4 + (pers.nuke - 0.6);
+        let s = MP.Diplo.strength(e) / Math.max(1, MP.Diplo.strength(n)) + (ai.grudge.get(o) || 0) * 0.4 + (pers.nuke - 0.6) + (ai.focus === o ? 0.6 : 0);
         if (e.isPlayer && S.t < 600) s -= 0.3;
         if (s > bs) { bs = s; target = o; }
       }

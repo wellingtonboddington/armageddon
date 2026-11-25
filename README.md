@@ -2,7 +2,7 @@
 
 An original, fully offline real-time grand strategy game in a single HTML file. You place a nation on a real world map, expand, trade, fortify and negotiate against up to 99 AI commanders. Then you decide how close to midnight you are willing to push the Doomsday Clock.
 
-**Play:** download [`index.html`](index.html) and open it in Chrome, Edge or Firefox. It doesn't need an internet connection, an install, a server or any other files. Progress, settings and the auto-save live in your browser's local storage.
+**Play:** download [`index.html`](index.html) and open it in Chrome, Edge or Firefox. It doesn't need an internet connection, an install, a server or any other files. Progress, settings and the auto-save live in your browser's local storage. The game goes fullscreen on your first click; you can turn that off in Settings or use the ⛶ button.
 
 ## What's inside
 
@@ -21,6 +21,7 @@ An original, fully offline real-time grand strategy game in a single HTML file. 
   - Terrain affects the cost and speed of attacks.
   - Supply lines weaken attacks far from your cities and hubs. Cut-off pockets starve, and encircled ones are annexed.
   - Taking a capital pays loot.
+  - Front lines show each side's committed troops, as in war-map animations. The attacker's number appears as soon as they attack; a defender's number appears only once they commit troops (the DEFEND button on incoming attacks). Large cut-off pockets show "N Encircled" before they fall.
 - **Navy:** warships run on patrol fuel, hunt transports and warships, and capture trade ships as prizes. Transports land troops on marked coasts.
 - **Strategic weapons:** Airstrike, Tactical, Hypersonic, ICBM, MIRV (splits into 5 warheads), Orbital and EMP. Each is researched once, then fired from silos; `LAUNCH ALL` fires every ready silo.
 - **Defences:**
@@ -33,6 +34,8 @@ An original, fully offline real-time grand strategy game in a single HTML file. 
   - Betrayal is rare and flags the betrayer as a traitor.
   - Bots weigh your strength, borders and history before accepting an offer.
   - A party of up to 2 bot partners replaces your alliances.
+  - **TARGET** (radial menu) marks an enemy for your allies and party to focus.
+  - **Ask Troops / Ask Credits** requests aid from an ally, who may say no.
 - **Features original to this game:** doctrines with field directives, supply lines, the Global Council (resolutions put to a vote), EMP strikes, drifting weather fronts, and pause / 1–4× speed / save & resume.
 - **VESPER:** your intelligence advisor, an original character with procedural pixel art. She speaks in a female browser voice (Web Speech API) with typed briefings, in the menu and in matches. Sound cues play when speech is unavailable.
 - **Sound:** all sound is synthesised with the Web Audio API: UI, hover ticks, building, invasions, radar, launches, sirens, detonations, naval alerts, ambience and menu music.

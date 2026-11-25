@@ -37,11 +37,13 @@
           <button class="btn sm" data-sp="4">4×</button>
         </div>
         <button class="btn sm" id="h-save" title="Save match">SAVE</button>
+        <button class="btn sm" id="h-fs" title="Toggle fullscreen">⛶</button>
       </div>
     </div>
 
     <div class="hud-tr">
       <div class="panel lb brk" id="h-lb"><div class="lb-head"><span>#</span><span>NATION</span><span><img class="ico" src="${MP.Icons.url('flag', '#8d8670', 32)}"></span><span><img class="ico" src="${MP.Icons.url('troops', '#8d8670', 32)}"></span></div><div id="h-lb-rows"></div></div>
+      <div class="panel target-chip brk" id="h-target" style="display:none"></div>
       <div class="panel attacks brk" id="h-attacks"><div class="ph"><span class="t">⊕ ATTACKS</span><span id="h-att-count">0 OUT</span></div><div id="h-att-rows"></div></div>
       <div class="panel effects brk" id="h-effects" style="display:none"></div>
     </div>
@@ -103,6 +105,8 @@
         h('img', { class: 'gl', src: MP.Icons.url(b.icon, '#ece6cf', 40), draggable: 'false' }),
         h('span', { class: 'c', id: 'cost-' + type }, ''));
       btn.addEventListener('click', () => HUD.setBuildMode(type));
+      btn.addEventListener('mouseenter', (e) => HUD.showTip(e.currentTarget, buildTip(type), 'up'));
+      btn.addEventListener('mouseleave', () => HUD.hideTip());
       bar.appendChild(btn);
     }
   };
@@ -118,6 +122,8 @@
       const btn = h('button', { class: 'dslot', 'data-type': type, title: b.name + ' — ' + defDesc(type) },
         h('span', { class: 'k' }, b.key), h('img', { class: 'gl', src: MP.Icons.url(b.icon, '#ece6cf', 40), draggable: 'false' }), h('span', { class: 'c', id: 'cost-' + type }, ''));
       btn.addEventListener('click', () => HUD.setBuildMode(type));
+      btn.addEventListener('mouseenter', (e) => HUD.showTip(e.currentTarget, buildTip(type)));
+      btn.addEventListener('mouseleave', () => HUD.hideTip());
       defrow.appendChild(btn);
     }
     const wrow = document.getElementById('h-wpnrow');
@@ -133,6 +139,20 @@
     }
     document.getElementById('h-launchall').addEventListener('click', () => { HUD.launchAll = !HUD.launchAll; MP.SFX.play('toggle'); HUD.syncLaunchAll(); });
   };
+  const BUILD_DESC = {
+    city: 'Raises your troop cap by 25k per level. Convoys stop here.',
+    port: 'Coastal only. Sends trade ships to friendly ports and builds warships. Convoys stop here.',
+    factory: 'Sends convoys to cities, ports and factories within ' + C.FACTORY_RANGE + ' tiles — income for both ends. Each level doubles convoys and gold.',
+    hub: 'Links factories, cities and ports within ' + C.HUB_RANGE + ' tiles with white roads: convoys 25% faster and reach two stops.',
+    enrich: 'Must sit on a free ☢ deposit. Removes the 200 uranium cap and adds +' + C.ENRICH_RATE + ' U/s per level.',
+    fort: 'Within ' + C.FORT_RADIUS + ' tiles (doubling per level) attackers pay ×5 troops and advance ×3 slower.',
+    warship: 'Built at your nearest port. Hunts warships and transports, seizes enemy trade ships. Click it, then the sea, to set a patrol.',
+    silo: 'Launches researched missiles. One ready missile per level; reloads in ' + C.SILO_RELOAD + 's.',
+  };
+  function buildTip(type) {
+    const p = G.player(); const c = p ? G.structCost(p, type) : { credits: C.BUILD[type].base, u: C.BUILD[type].u };
+    return `<b>${C.BUILD[type].name}</b> <span class="dim">[${C.BUILD[type].key}]</span><br>${BUILD_DESC[type] || defDesc(type)}<br><span class="y">${U.fmtK(c.credits)} credits${c.u ? ' · ' + c.u + ' U' : ''}</span> <span class="dim">· place on your own to upgrade</span>`;
+  }
   function defDesc(type) {
     const d = C.DEFENSE[type];
     if (type === 'radar') return `detects launches within ${d.range} tiles — earlier warning raises every interception chance`;
@@ -204,6 +224,7 @@
     document.getElementById('h-resign').addEventListener('click', () => HUD.confirm('Resign the match?', 'Your nation will surrender.', () => MP.Game.resign()));
     document.getElementById('h-settings').addEventListener('click', () => MP.Menu.openSettings(true));
     document.getElementById('h-save').addEventListener('click', () => MP.Game.save(false));
+    document.getElementById('h-fs').addEventListener('click', () => MP.toggleFullscreen());
     document.getElementById('h-banner-x').addEventListener('click', () => HUD.clearMode());
     els['h-speed'].addEventListener('click', (e) => {
       const b = e.target.closest('button'); if (!b) return;
@@ -400,13 +421,21 @@
     const allied = p && G.isAllied(p.id, o);
     const opts = [];
     opts.push({ id: 'info', label: 'Info', icon: 'radar' });
-    if (!self && !watch) {
-      opts.push({ id: 'attack', label: 'Attack', icon: 'jet', dis: allied });
-      opts.push({ id: 'boat', label: 'Boat', icon: 'warship', dis: allied });
-      opts.push({ id: 'ally', label: allied ? (n.team && n.team === p.team ? 'Team' : 'Break') : 'Ally', icon: 'flag', dis: n.team && n.team === p.team });
-      opts.push({ id: 'truce', label: 'Truce', icon: 'shield', dis: allied || G.hasTruce(p.id, o) });
+    if (!self && !watch && allied) {
+      const team = n.team && n.team === p.team;
+      opts.push({ id: 'gift', label: 'Gift', icon: 'troops' });
+      opts.push({ id: 'askTroops', label: 'Ask Troops', icon: 'troops' });
+      opts.push({ id: 'askCredits', label: 'Ask Credits', icon: 'coin' });
+      opts.push({ id: 'ally', label: team ? (n.partner ? 'Party' : 'Team') : 'Break', icon: 'flag', dis: team });
       opts.push({ id: 'embargo', label: p.embargo.has(o) ? 'Lift' : 'Embargo', icon: 'coin' });
-      opts.push({ id: 'gift', label: 'Gift', icon: 'troops', dis: !allied });
+    } else if (!self && !watch) {
+      const hasFriends = G.alive().some((x) => x.id !== p.id && x.ai && G.isAllied(x.id, p.id));
+      opts.push({ id: 'attack', label: 'Attack', icon: 'jet' });
+      opts.push({ id: 'boat', label: 'Boat', icon: 'warship' });
+      opts.push({ id: 'ally', label: 'Ally', icon: 'flag' });
+      opts.push({ id: 'truce', label: 'Truce', icon: 'shield', dis: G.hasTruce(p.id, o) });
+      opts.push({ id: 'target', label: p.targetId === o ? 'Untarget' : 'Target', icon: 'nuke', dis: !hasFriends });
+      opts.push({ id: 'embargo', label: p.embargo.has(o) ? 'Lift' : 'Embargo', icon: 'coin' });
     }
     opts.push({ id: 'focus', label: 'Focus', icon: 'capital' });
     const R = 92;
@@ -454,6 +483,9 @@
         break;
       }
       case 'gift': HUD.giftDialog(n); break;
+      case 'askTroops': MP.Diplo.requestAid(p, n, 'troops'); break;
+      case 'askCredits': MP.Diplo.requestAid(p, n, 'credits'); break;
+      case 'target': MP.Diplo.setTarget(p, n); HUD.refresh(); break;
     }
   };
 
@@ -587,12 +619,17 @@
     setTimeout(() => el.classList.add('out'), 2400);
     setTimeout(() => el.remove(), 3000);
   };
-  HUD.showTip = function (anchor, html) {
+  HUD.showTip = function (anchor, html, dir) {
     const tip = els['h-tip'];
     tip.innerHTML = html; tip.style.display = '';
     const r = anchor.getBoundingClientRect();
-    tip.style.left = Math.max(8, Math.min(window.innerWidth - 290, r.left - 290)) + 'px';
-    tip.style.top = Math.max(8, r.top - 10) + 'px';
+    if (dir === 'up') {
+      tip.style.left = Math.max(8, Math.min(window.innerWidth - 290, r.left + r.width / 2 - 140)) + 'px';
+      tip.style.top = Math.max(8, r.top - tip.offsetHeight - 8) + 'px';
+    } else {
+      tip.style.left = Math.max(8, Math.min(window.innerWidth - 290, r.left - 290)) + 'px';
+      tip.style.top = Math.max(8, r.top - 10) + 'px';
+    }
   };
   HUD.hideTip = function () { els['h-tip'].style.display = 'none'; };
   HUD.savedIndicator = function (ok) { HUD.toast(ok ? 'Match saved' : 'Save failed — storage blocked', ok ? 'good' : 'bad'); };
@@ -775,12 +812,27 @@
         const tn = a.to ? S.nations[a.to] : null;
         return `<div class="atr"><span class="nm">${tn ? MP.Flags.img(tn.flag, 'flag xs') + ' ' + U.esc(tn.name) : '<img class="ico" src="' + MP.Icons.url('flag', '#8d8670', 32) + '"> UNCLAIMED LAND'}</span><span class="tr">${U.fmtK(a.troops)}</span><button class="btn sm" data-recall="${a.id}">RECALL</button></div>`;
       }).join('') + S.ships.filter((s) => s.owner === p.id && s.kind === 'transport').map((s) => `<div class="atr"><span class="nm">⛴ TRANSPORT → ${s.target ? U.esc(S.nations[s.target].name) : 'COAST'}</span><span class="tr">${U.fmtK(s.troops)}</span><span></span></div>`).join('');
+      const incoming = S.attacks.filter((a) => a.to === p.id && !a.done);
+      els['h-att-rows'].innerHTML += incoming.map((a) => {
+        const an = S.nations[a.from];
+        return `<div class="atr in"><span class="nm">▼ ${MP.Flags.img(an.flag, 'flag xs')} ${U.esc(an.name)}</span><span class="tr">${U.fmtK(a.troops)}${a.def > 0 ? ' <i class="def">⛨' + U.fmtK(a.def) + '</i>' : ''}</span><button class="btn sm defend" data-defend="${a.id}" title="Commit ${Math.round(HUD.ratio * 100)}% of your troops to hold this front">DEFEND</button></div>`;
+      }).join('');
+      els['h-att-count'].textContent = mine.length + ' OUT' + (incoming.length ? ' · ' + incoming.length + ' IN' : '');
       els['h-att-rows'].onclick = (e) => {
-        const b = e.target.closest('[data-recall]'); if (!b) return;
-        const at = S.attacks.find((a) => a.id === Number(b.dataset.recall));
-        if (at) { MP.War.recall(at); MP.Game.notify('attack.recalled', {}); }
+        const b = e.target.closest('[data-recall]');
+        if (b) { const at = S.attacks.find((a) => a.id === Number(b.dataset.recall)); if (at) { MP.War.recall(at); MP.Game.notify('attack.recalled', {}); } return; }
+        const d = e.target.closest('[data-defend]');
+        if (d) {
+          const at = S.attacks.find((a) => a.id === Number(d.dataset.defend));
+          if (at) { const amt = MP.War.commitDefense(at, p.troops * HUD.ratio); if (amt) { MP.SFX.play('attack'); HUD.toast(`${U.fmtK(amt)} troops hold the line against ${S.nations[at.from].name}`, 'good'); } else { MP.SFX.play('error'); HUD.toast('Not enough troops to commit', 'bad'); } }
+        }
       };
-      document.getElementById('h-attacks').style.display = mine.length || S.ships.some((s) => s.owner === p.id && s.kind === 'transport') ? '' : 'none';
+      document.getElementById('h-attacks').style.display = mine.length || incoming.length || S.ships.some((s) => s.owner === p.id && s.kind === 'transport') ? '' : 'none';
+      // allied target chip
+      const tgt = p.targetId && S.nations[p.targetId];
+      const chip = document.getElementById('h-target');
+      if (tgt && tgt.alive) { chip.style.display = ''; chip.innerHTML = `<span class="t">⌖ ALLIED TARGET</span> ${MP.Flags.img(tgt.flag, 'flag xs')} <b>${U.esc(tgt.name)}</b> <button class="btn sm" data-untarget>✕</button>`; chip.onclick = (e) => { if (e.target.closest('[data-untarget]')) MP.Diplo.setTarget(p, tgt); }; }
+      else { chip.style.display = 'none'; if (p.targetId && (!tgt || !tgt.alive)) p.targetId = 0; }
     } else document.getElementById('h-attacks').style.display = 'none';
     // council effects
     const ef = S.council.effects;

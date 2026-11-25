@@ -42,6 +42,20 @@
     flush,
   };
 
+  // ---------- fullscreen ----------
+  MP.isFullscreen = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+  MP.enterFullscreen = function () {
+    if (MP.isFullscreen()) return;
+    const el = document.documentElement;
+    const fn = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (!fn) return;
+    try { const r = fn.call(el, { navigationUI: 'hide' }); if (r && r.catch) r.catch(() => {}); } catch (e) { /* needs a user gesture */ }
+  };
+  MP.toggleFullscreen = function () {
+    if (MP.isFullscreen()) { const fn = document.exitFullscreen || document.webkitExitFullscreen; if (fn) { try { const r = fn.call(document); if (r && r.catch) r.catch(() => {}); } catch (e) { /* */ } } }
+    else MP.enterFullscreen();
+  };
+
   // ---------- audio graph ----------
   let ctx = null, master = null, sfxBus = null, voiceBus = null, musicBus = null, ambBus = null;
   function vol(key, def) { return MP.settings.get(key, def); }

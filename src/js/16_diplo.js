@@ -143,6 +143,8 @@
         const p = D.allianceOdds(a, b);
         if (D.allianceCount(b) < C.ALLIANCE_MAX && S.rng() < p) { D.formAlliance(a, b); MP.Game.notify('diplo.accepted', { nation: b.name }); MP.Game.wire('CABLE', `${b.name} SIGNS AN ALLIANCE WITH YOU`, 'good'); }
         else { MP.Game.notify('diplo.declined', { nation: b.name }); MP.Game.wire('CABLE', `${b.name} DECLINES YOUR ALLIANCE`, 'cable'); G.addRel(b.id, a.id, -2); MP.SFX.play('decline'); }
+      } else if (r.kind === 'aid') {
+        answerAid(r, a, b);
       } else if (r.kind === 'truce') {
         const p = D.truceOdds(a, b);
         if (S.rng() < p) { D.formTruce(a, b); MP.Game.notify('diplo.truce', { nation: b.name }); MP.Game.wire('CABLE', `${b.name} AGREES TO A 3:00 TRUCE`, 'good'); MP.SFX.play('alliance'); }
@@ -182,6 +184,61 @@
     } else { G.addRel(b.id, p.id, -6); MP.SFX.play('decline'); }
     MP.HUD && MP.HUD.renderOffers();
   };
+
+  // ---------------- allied target (player marks an enemy for allies / party to focus) ----------------
+  D.setTarget = function (p, n) {
+    const S = G.S;
+    if (p.targetId === n.id) {
+      p.targetId = 0;
+      for (const o of S.nations) if (o && o.ai && o.ai.focus === n.id) o.ai.focus = 0;
+      MP.Game.wire('CABLE', `TARGET ON ${n.name} RESCINDED`, 'cable');
+      MP.Game.toast('Allied target cleared', 'info');
+      return;
+    }
+    const friends = G.alive().filter((o) => o.ai && o.id !== p.id && G.isAllied(o.id, p.id));
+    if (!friends.length) { MP.Game.toast('You have no allies or party to direct', 'bad'); MP.SFX.play('error'); return; }
+    p.targetId = n.id;
+    let yes = 0;
+    for (const o of friends) {
+      if (G.isAllied(o.id, n.id)) continue;
+      const odds = o.partner || (o.team && o.team === p.team) ? 0.97 : U.clamp(0.4 + G.rel(o.id, p.id) / 120 - G.rel(o.id, n.id) / 200, 0.1, 0.95);
+      if (S.rng() < odds) { o.ai.focus = n.id; o.ai.focusUntil = S.t + 240; yes++; G.addRel(o.id, n.id, -10); }
+    }
+    MP.Game.wire('CABLE', yes ? `${yes} ${yes === 1 ? 'ALLY COMMITS' : 'ALLIES COMMIT'} TO THE STRIKE ON ${n.name}` : `YOUR ALLIES WILL NOT MOVE ON ${n.name}`, yes ? 'good' : 'cable');
+    MP.Game.notify('diplo.target', { nation: n.name, text: yes ? `${n.name} is marked. ${yes} ${yes === 1 ? 'ally is' : 'allies are'} moving.` : `Nobody wants ${n.name} badly enough.`, priority: 1 });
+    MP.SFX.play(yes ? 'alliance' : 'decline');
+  };
+
+  D.requestAid = function (p, ally, kind) {
+    const S = G.S;
+    p.aidCd = p.aidCd || {};
+    const key = ally.id + kind;
+    if ((p.aidCd[key] || 0) > S.t) { MP.Game.toast(`${ally.name} was asked recently — wait ${Math.ceil(p.aidCd[key] - S.t)}s`, 'bad'); return; }
+    p.aidCd[key] = S.t + 45;
+    D.pending.push({ kind: 'aid', what: kind, from: p.id, to: ally.id, at: S.t + 1 + S.rng() * 2.5 });
+    MP.Game.toast(`Requested ${kind} from ${ally.name}`, 'info');
+    MP.SFX.play('send');
+  };
+  function answerAid(r, a, b) {
+    const S = G.S;
+    if (!G.isAllied(a.id, b.id)) return;
+    const partner = b.partner || (b.team && b.team === a.team);
+    let odds = partner ? 0.8 : U.clamp(0.25 + G.rel(b.id, a.id) / 140, 0.05, 0.85);
+    const underFire = S.t - b.lastHitAt < 10;
+    if (r.what === 'troops') { odds += b.troops / Math.max(1, b.cap) > 0.55 ? 0.2 : -0.25; if (underFire) odds -= 0.35; }
+    else odds += b.credits > 25000 ? 0.15 : -0.3;
+    if (a.lastHitAt && S.t - a.lastHitAt < 15) odds += 0.15; // helping a friend under attack
+    if (S.rng() < odds) {
+      const amt = r.what === 'troops' ? b.troops * (0.1 + S.rng() * 0.12) : b.credits * (0.12 + S.rng() * 0.15);
+      const got = D.gift(b, a, r.what, amt);
+      MP.Game.wire('CABLE', `${b.name} SENDS YOU ${U.fmtK(got)} ${r.what.toUpperCase()}`, 'good');
+      MP.Game.notify('diplo.gift', { nation: b.name });
+      MP.SFX.play(r.what === 'troops' ? 'alliance' : 'coin');
+    } else {
+      MP.Game.wire('CABLE', `${b.name} DECLINES YOUR REQUEST FOR ${r.what.toUpperCase()}`, 'cable');
+      MP.SFX.play('decline');
+    }
+  }
 
   // ---------------- betrayal check (AI side) ----------------
   D.tickBetrayal = function () {

@@ -101,6 +101,13 @@ img.flag.xl { width: 96px; height: 64px; }
 .lbr.partner { color: var(--cyan); }
 .attacks .atr { display: grid; grid-template-columns: 1fr 54px 66px; gap: 6px; align-items: center; padding: 4px 9px; border-top: 1px solid #221f16; }
 .atr .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .atr .tr { text-align: right; }
+.attacks .atr.in { background: rgba(255, 68, 51, .06); }
+.attacks .atr.in .nm { color: #ffb3a8; }
+.attacks .def { color: var(--cyan); font-style: normal; font-size: 10px; }
+.attacks .defend { border-color: var(--cyan); color: var(--cyan); }
+.target-chip { padding: 6px 9px; font-size: 11px; display: flex; gap: 6px; align-items: center; border-color: var(--red); }
+.target-chip .t { color: var(--red); letter-spacing: .1em; font-size: 10px; }
+.target-chip b { flex: 1; }
 .effects .efr { display: flex; justify-content: space-between; padding: 2px 9px 4px; font-size: 11px; }
 
 /* advisor + wire */
@@ -645,6 +652,20 @@ body.watch .hud-bc .buildbar, body.watch .hud-bc .stats, body.watch #h-dock, bod
     flush,
   };
 
+  // ---------- fullscreen ----------
+  MP.isFullscreen = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+  MP.enterFullscreen = function () {
+    if (MP.isFullscreen()) return;
+    const el = document.documentElement;
+    const fn = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (!fn) return;
+    try { const r = fn.call(el, { navigationUI: 'hide' }); if (r && r.catch) r.catch(() => {}); } catch (e) { /* needs a user gesture */ }
+  };
+  MP.toggleFullscreen = function () {
+    if (MP.isFullscreen()) { const fn = document.exitFullscreen || document.webkitExitFullscreen; if (fn) { try { const r = fn.call(document); if (r && r.catch) r.catch(() => {}); } catch (e) { /* */ } } }
+    else MP.enterFullscreen();
+  };
+
   // ---------- audio graph ----------
   let ctx = null, master = null, sfxBus = null, voiceBus = null, musicBus = null, ambBus = null;
   function vol(key, def) { return MP.settings.get(key, def); }
@@ -736,12 +757,12 @@ rle:"vAMHDDUEFQQ8I/gBBwi6AQQKMIABBisErgEMBxIEBvwGAQEEDTUDFwQ6IvkBBgm6AQkEMeQCDgM
     FORT_COST_MULT: 5, FORT_SLOW: 3, FORT_RADIUS: 50, // designer
     SUPPLY_FREE: 120, SUPPLY_SPAN: 300, SUPPLY_MAX_PENALTY: 0.6,
 
-    TERRAIN_COST: [3, 4, 4, 4],          // biome: plains, forest, desert, tundra (troops/tile, unclaimed)
+    TERRAIN_COST: [2, 3, 3, 3],          // biome: plains, forest, desert, tundra (troops/tile, unclaimed)
     ELEV_COST: [1, 1.6, 3],              // lowland, highlands, mountains
     ELEV_SPEED: [1, 0.8, 0.5],
     DENSITY_COST: 1.0,                   // attacker troops per defender troop-density per tile
     DENSITY_LOSS: 0.7,                   // defender troops lost per tile captured × density
-    ATTACK_SPEED_BASE: 8, ATTACK_SPEED_SQRT: 1 / 6, EXPAND_SPEED_MULT: 1.5,
+    ATTACK_SPEED_BASE: 14, ATTACK_SPEED_SQRT: 1 / 4, EXPAND_SPEED_MULT: 2.6,
 
     CAPITAL_LOOT_CREDITS: 0.25, CAPITAL_LOOT_URANIUM: 0.3, // obs +1,450 / +104 on a small capital
     ATTACK_PRESETS: [0.10, 0.25, 0.35, 0.50, 0.75],          // obs
@@ -2825,7 +2846,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
   function toSpeech(s) {
     return s.replace(/[☢▮●·•▸►◆▲■□|]/g, ' ')
       .replace(/\s*[—–]\s*/g, ', ')
-      .replace(/\bMIRV(s?)\b/g, 'merv$1')
+      .replace(/\bMIRV(s?)\b/g, 'Merv$1')
       .replace(/\bVESPER\b/g, 'Vesper')
       .replace(/(^|\s)'(\d\d)\b/g, function (m, a, yy) { return a + '20' + yy; })   // '29 -> 2029
       .replace(/×/g, ' times ')
@@ -2934,8 +2955,8 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     'xxxxccccxcccccccccccccccccccccccDcccccccccccccccccccccccCcccCCCE'
   ];
   const PAL = {
-    // hair: near-black with olive-charcoal sheen, dim-yellow rim light
-    K: '#040302', k: '#0e0c08', h: '#1f1b12', H: '#353020', G: '#4d4630', j: '#5c4c0e',
+    // hair: dark charcoal-brown with a readable olive sheen and a dim-yellow rim light
+    K: '#120f09', k: '#2a2416', h: '#433924', H: '#5f5236', G: '#7f6e44', j: '#937616',
     // the hazard-yellow streak
     Y: '#ffd21f', y: '#e0a812', z: '#8a6a0c',
     // skin ramp: umber shadows -> amber -> hazard yellow -> warm white
@@ -3183,9 +3204,9 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
    * ======================================================================================= */
   const synth = (function () { try { return window.speechSynthesis || null; } catch (e) { return null; } })();
   const SSU = typeof window.SpeechSynthesisUtterance === 'function' ? window.SpeechSynthesisUtterance : null;
-  const TTS = { ok: !!(synth && SSU), voices: [], voice: null, tune: null, polls: 0, fails: 0, broken: false, blocked: false, gesture: false, utter: [], keepAlive: 0 };
+  const TTS = { ok: !!(synth && SSU), voices: [], voice: null, tune: null, fails: 0, broken: false, blocked: false, gesture: false, utter: [], keepAlive: 0 };
   const FEMALE_RX = /\b(female|woman|samantha|victoria|karen|moira|tessa|fiona|serena|zira|hazel|susan|aria|jenny|libby|sonia|natasha|clara|emma|ava|allison|kate|kathy|vicki|veena|zoe|zoey|nicky|agnes|martha|catherine|heera|linda|eva|cortana|michelle|ana|ashley|cora|elizabeth|jane|nancy|sara|sarah|amber|monica|maisie|hollie|bella|abbi|olivia|mia|neerja|leah|emily|molly|annette|freya|elsie|joanna|kimberly|salli|kendra|ivy|nicole|amy|ruth|isla|imogen|alice|anna|helena|laura|lucia|paulina|yuna|tingting|sinji|kyoko|ellen|nora|alva|satu|zuzana|mariska|ioana|melina|carmit|lekha|damayanti|kanya|lana|yelda|milena|stephanie|shelley|sandy|flo|grandma|princess)\b/i;
-  const MALE_RX = /\b(male|man|david|mark|george|daniel|alex|fred|ryan|guy|thomas|oliver|james|brian|arthur|rishi|aaron|gordon|lee|tom|junior|ralph|albert|bruce|eddy|reed|rocko|grandpa|christopher|eric|roger|steffan|william|liam|connor|andrew|brandon|davis|jason|tony|ravi|prabhat|sean|mitchell|ken|luke|noah|elliot|ethan|harry|jacob|kai|neil|duncan|aarav|jorge|diego|juan|carlos|thomas|xander|maged|tarik|yuri|aleksandr|felix|hemant|rafael|gordon)\b/i;
+  const MALE_RX = /\b(male|man|david|mark|george|daniel|alex|fred|ryan|guy|thomas|oliver|james|brian|arthur|rishi|aaron|gordon|lee|tom|junior|ralph|albert|bruce|eddy|reed|rocko|grandpa|christopher|eric|roger|steffan|william|liam|connor|andrew|brandon|davis|jason|tony|ravi|prabhat|sean|mitchell|ken|luke|noah|elliot|ethan|harry|jacob|kai|neil|duncan|aarav|jorge|diego|juan|carlos|xander|maged|tarik|yuri|aleksandr|felix|hemant|rafael)\b/i;
   const NOVELTY_RX = /\b(albert|bad news|bahh|bells|boing|bubbles|cellos|good news|jester|organ|superstar|trinoids|whisper|wobble|zarvox|deranged|hysterical|princess|grandma|grandpa)\b/i;
   const ANDROID_F = /-x-(sfg|iob|iog|tpc|tpf|gba|gbc|gbg|aua|auc|ahp|cxx)/i;
   const ANDROID_M = /-x-(iol|iom|tpd|gbb|gbd|rjs|aub|aud|ena|end)/i;
@@ -3337,7 +3358,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
   let inited = false, mode = 'idle', cur = null, gapUntil = 0, lineSeq = 0, hostHint = '';
   const Q = [], MAXQ = 4;
   const lastFire = Object.create(null), tutDone = Object.create(null);
-  let greetAt = 0, lastGreetAt = -1e9, lastReturnAt = -1e9, chatterAt = 0, lastLineAt = 0;
+  let greetAt = 0, lastGreetAt = -1e9, lastReturnAt = -1e9, chatterAt = 0;
   let speakingFlag = false, alertUntil = 0, glitchUntil = 0;
 
   function ttlFor(it) { return it.tut ? 25 : it.priority >= 3 ? 20 : it.priority === 2 ? 15 : 8; }
@@ -3421,7 +3442,9 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     const t = nowS();
     if (item.priority >= 3 || item.intr) {
       if (cur && cur.state !== 'done' && (cur.priority >= 3 || cur.intr) && cur.priority >= item.priority) {
-        Q.unshift(item); trimQueue(); return true;             // never cut off another critical line
+        let at = 0;                                              // never cut off another critical line;
+        while (at < Q.length && (Q[at].priority >= 3 || Q[at].intr)) at++;   // wait behind earlier ones (FIFO)
+        Q.splice(at, 0, item); return trimQueue(item);
       }
       if (allowedIn(item, mode)) { interrupt(); play(item); return true; }
     }
@@ -3460,10 +3483,9 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     cur = item;
     item.state = 'typing'; item.start = t; item.lastT = t; item.pos = 0; item.wait = 0; item.len = item.text.length;
     item.shown = -1; item.mode = 'text'; item.id = ++lineSeq;
-    lastLineAt = t;
     if (mode === 'menu') scheduleChatter(t);
     emit('advisor:line', { text: item.text, key: item.key || '', priority: item.priority });
-    if (item.priority >= 3 && !item.intr) { alertUntil = t + 3.2; glitchUntil = t + 0.7; anim.glitchSeed = 0; }
+    if (item.priority >= 3 && !item.intr) { alertUntil = t + 3.2; glitchUntil = t + 0.7; }
     else alertUntil = Math.min(alertUntil, t);
     anim.gazeUntil = 0; anim.gaze = 0;
     lineDOM(item);
@@ -3484,7 +3506,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
   function setSpeaking(on) {
     if (on === speakingFlag) return;
     speakingFlag = on;
-    emit('advisor:speaking', { on: on });
+    emit('advisor:speaking', { on: on, voice: !!(on && cur && cur.mode === 'voice') });
     applyClasses();
   }
   function scheduleChatter(t) { chatterAt = t + 35 + Math.random() * 25; }
@@ -3707,7 +3729,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
   /* =========================================================================================
    * ANIMATION
    * ======================================================================================= */
-  const anim = { blinkAt: 2, blinkDouble: false, gaze: 0, gazeUntil: 0, nextGlance: 6, mSlot: -1, mId: 0, mVal: 0, glitchSeed: 0, phase: Math.random() * 10 };
+  const anim = { blinkAt: 2, blinkDouble: false, gaze: 0, gazeUntil: 0, nextGlance: 6, mSlot: -1, mId: 0, mVal: 0, phase: Math.random() * 10 };
   function animState(t) {
     let eye = 0;
     if (t >= anim.blinkAt) {
@@ -3876,10 +3898,11 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     applyClasses();
   }
   function setVolume(v) {
-    S.volume = clamp(+v || 0, 0, 1); sset('advisor.volume', S.volume);
+    v = +v; if (!isFinite(v)) return;
+    S.volume = clamp(v, 0, 1); sset('advisor.volume', S.volume);
     try { for (const u of TTS.utter) u.volume = ttsVolume(); } catch (e) { /* live change unsupported */ }
   }
-  function setRate(r) { S.rate = clamp(+r || 1, 0.8, 1.3); sset('advisor.rate', S.rate); }
+  function setRate(r) { r = +r; if (!isFinite(r)) return; S.rate = clamp(r, 0.8, 1.3); sset('advisor.rate', S.rate); }
   function listVoices() {
     if (TTS.ok && !TTS.voices.length) loadVoices();
     return TTS.voices.map(function (v) { return { name: v.name, lang: v.lang, female: gender(v) === true, local: !!v.localService, default: !!v.default }; });
@@ -4625,7 +4648,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
       const ur = Math.round(v.uranium * C.CAPITAL_LOOT_URANIUM) + 20;
       v.credits = Math.max(0, v.credits - cr); v.uranium = Math.max(0, v.uranium - ur);
       a.credits += cr; a.uranium += ur;
-      MP.FX && MP.FX.floatText(v.capX, v.capY, '+' + U.fmtInt(cr), [255, 210, 31], '+' + ur);
+      if (a.isPlayer || v.isPlayer) MP.FX && MP.FX.floatText(v.capX, v.capY, '+' + U.fmtInt(cr), [255, 210, 31], '+' + ur);
       if (a.isPlayer) { S.stats.capitals++; MP.Game.notify('capital.taken', { nation: v.name, credits: U.fmtInt(cr), uranium: ur }); }
       if (v.isPlayer) MP.Game.notify('capital.lost', { nation: a.name });
       MP.Game.wire('OSINT', `${a.name} TAKES THE CAPITAL OF ${v.name}`, v.isPlayer ? 'bad' : 'osint');
@@ -4922,9 +4945,11 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     // hub network roads: hub ↔ stops within range (only draw nearest few to keep it readable)
     for (const h of hubs) {
       const near = stops.filter((s) => (s.owner === h.owner || G.isAllied(s.owner, h.owner)) && U.dist2(s.x, s.y, h.x, h.y) <= hr2)
-        .sort((a, b) => U.dist2(a.x, a.y, h.x, h.y) - U.dist2(b.x, b.y, h.x, h.y)).slice(0, 10);
+        .sort((a, b) => U.dist2(a.x, a.y, h.x, h.y) - U.dist2(b.x, b.y, h.x, h.y)).slice(0, 5);
       for (const s of near) addRoad(h, s, 'white', h.owner);
-      for (const h2 of hubs) if (h2 !== h && G.isAllied(h.owner, h2.owner) && U.dist2(h2.x, h2.y, h.x, h.y) <= hr2) addRoad(h, h2, 'white', h.owner);
+      const hh = hubs.filter((h2) => h2 !== h && G.isAllied(h.owner, h2.owner) && U.dist2(h2.x, h2.y, h.x, h.y) <= hr2)
+        .sort((a, b) => U.dist2(a.x, a.y, h.x, h.y) - U.dist2(b.x, b.y, h.x, h.y)).slice(0, 2);
+      for (const h2 of hh) addRoad(h, h2, 'white', h.owner);
     }
     S.roads = Array.from(roads.values());
   };
@@ -5109,7 +5134,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
       return at;
     }
     at = { id: S.nextAttackId++, from, to, troops, initial: troops, front: [], inFront: new Set(), budget: 0, done: false,
-      boat: !!(opts && opts.boat), started: S.t, captured: 0, idle: 0 };
+      boat: !!(opts && opts.boat), started: S.t, captured: 0, idle: 0, def: 0, defPeak: 0, defNext: S.t + 1.5 + S.rng() * 2.5 };
     S.attacks.push(at);
     if (opts && opts.seed != null) War.seedFrom(at, opts.seed); else War.refreshFrontier(at);
     if (to) War.declareWar(from, to);
@@ -5214,6 +5239,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
       const a = S.nations[at.from];
       if (!a.alive) { at.done = true; continue; }
       if (at.to && (!S.nations[at.to].alive || !G.canAttack(at.from, at.to))) { War.finish(at, true); continue; }
+      if (at.to && S.t >= at.defNext) War.aiDefend(at);
       let speed = (C.ATTACK_SPEED_BASE + Math.sqrt(Math.max(0, at.troops)) * C.ATTACK_SPEED_SQRT) * G.mod(a, 'attackSpeed');
       if (!at.to) speed *= C.EXPAND_SPEED_MULT;
       at.budget += speed * dt;
@@ -5235,6 +5261,12 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
         for (const u of neighbors(t)) if (u >= 0 && owner[u] === at.from) { touch = true; break; }
         if (!touch) continue;
         const tc = War.tileCost(at, t);
+        let defCost = 0;
+        if (at.def > 0) { // committed defenders hold the line: each tile costs more and is taken slower
+          defCost = Math.min(at.def, at.def / Math.max(25, at.front.length) * 1.4 + 2);
+          tc.cost += defCost * 1.2;
+          tc.slow *= 1 + Math.min(2, at.def / Math.max(1, at.troops));
+        }
         if (at.troops < tc.cost) {
           at.inFront.add(t); at.front.push(t);
           War.finish(at, false);
@@ -5243,6 +5275,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
         at.troops -= tc.cost;
         at.budget -= tc.slow;
         at.idle = 0;
+        if (defCost) at.def = Math.max(0, at.def - defCost);
         if (at.to) {
           const d = S.nations[at.to];
           const loss = Math.min(d.troops, (d.troops / Math.max(1, d.tiles)) * C.DENSITY_LOSS);
@@ -5265,8 +5298,29 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     at.done = true;
     if (returnTroops && a && a.alive && at.troops > 0) a.troops += at.troops;
     const d = at.to ? S.nations[at.to] : null;
+    if (d && d.alive && at.def > 0) { d.troops += at.def; at.def = 0; } // surviving defenders stand down
     if (d && d.isPlayer && d.alive && at.captured < 40 && S.t - at.started > 3) MP.Game.notify('attack.repelled', { nation: a.name });
     if (a && a.isPlayer && !returnTroops && at.captured < 5) MP.Game.notify('attack.stalled', {});
+  };
+
+  // defender commits troops to hold a front (shown as the defender's number on the map)
+  War.commitDefense = function (at, amount) {
+    const S = G.S, d = S.nations[at.to];
+    if (!d || !d.alive || at.done) return 0;
+    amount = Math.min(amount, d.troops);
+    if (amount < 50) return 0;
+    d.troops -= amount; at.def += amount; at.defPeak = Math.max(at.defPeak, at.def);
+    return amount;
+  };
+  War.aiDefend = function (at) {
+    const S = G.S, d = S.nations[at.to];
+    at.defNext = S.t + 6 + S.rng() * 4;
+    if (!d || !d.ai || !d.alive) return;
+    const pers = C.PERSONALITIES[d.personality] || C.PERSONALITIES.opportunist;
+    if (at.troops < d.troops * 0.06 && at.troops < 3000) return;           // a probe: not worth committing
+    if (at.def > at.troops * 0.5) return;                                    // the line already holds
+    const want = Math.min(d.troops * (0.22 + pers.defense * 0.2), at.troops * (0.55 + pers.defense * 0.35)) - at.def;
+    if (want > 0) War.commitDefense(at, want);
   };
 
   War.recall = function (at) {
@@ -5278,6 +5332,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
   War.pocketCursor = 1;
   War.tickPockets = function () {
     const S = G.S;
+    if (S.pockets) for (let i = S.pockets.length - 1; i >= 0; i--) if (S.t - S.pockets[i].seen > 16 || !S.nations[S.pockets[i].nation].alive) S.pockets.splice(i, 1);
     const nn = S.nations.length;
     for (let tries = 0; tries < nn; tries++) {
       War.pocketCursor = War.pocketCursor % (nn - 1) + 1;
@@ -5325,6 +5380,23 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
       let best = 0, bc = 0;
       for (const [o, cnt] of c.nb) if (cnt > bc && G.canAttack(o, id)) { bc = cnt; best = o; }
       if (!best) continue;
+      let cx = 0, cy = 0; for (const t of c.tiles) { cx += t % w; cy += (t / w) | 0; } cx /= c.size; cy /= c.size;
+      S.pockets = S.pockets || [];
+      const trapped = n.troops * c.size / Math.max(1, n.tiles);
+      let pk = S.pockets.find((q) => q.nation === id && U.dist2(q.x, q.y, cx, cy) < 900);
+      const notable = c.size >= 25 || (n.isPlayer && c.size >= 8);
+      if (!pk && notable) {
+        S.pockets.push({ nation: id, by: best, x: cx, y: cy, troops: trapped, size: c.size, seen: S.t, annexAt: S.t + 7 });
+        const byN = S.nations[best];
+        if (n.isPlayer) { MP.Game.notify('pocket.cut', {}); MP.Game.wire('IMINT', `${U.fmtInt(trapped)} OF YOUR TROOPS ENCIRCLED BY ${byN.name}`, 'bad'); }
+        else if (byN && byN.isPlayer) MP.Game.wire('IMINT', `${U.fmtInt(trapped)} ${n.name} TROOPS ENCIRCLED`, 'good');
+        continue;
+      }
+      if (pk) {
+        pk.seen = S.t; pk.troops = trapped; pk.x = cx; pk.y = cy; pk.by = best; pk.size = c.size;
+        if (S.t < pk.annexAt) continue;
+        S.pockets.splice(S.pockets.indexOf(pk), 1);
+      }
       for (const t of c.tiles) G.setOwner(t, best, C.DUG_IN_SECONDS);
       // pocketed troops are lost
       n.troops *= 1 - Math.min(0.5, c.size / Math.max(1, n.tiles + c.size));
@@ -6200,6 +6272,8 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
         const p = D.allianceOdds(a, b);
         if (D.allianceCount(b) < C.ALLIANCE_MAX && S.rng() < p) { D.formAlliance(a, b); MP.Game.notify('diplo.accepted', { nation: b.name }); MP.Game.wire('CABLE', `${b.name} SIGNS AN ALLIANCE WITH YOU`, 'good'); }
         else { MP.Game.notify('diplo.declined', { nation: b.name }); MP.Game.wire('CABLE', `${b.name} DECLINES YOUR ALLIANCE`, 'cable'); G.addRel(b.id, a.id, -2); MP.SFX.play('decline'); }
+      } else if (r.kind === 'aid') {
+        answerAid(r, a, b);
       } else if (r.kind === 'truce') {
         const p = D.truceOdds(a, b);
         if (S.rng() < p) { D.formTruce(a, b); MP.Game.notify('diplo.truce', { nation: b.name }); MP.Game.wire('CABLE', `${b.name} AGREES TO A 3:00 TRUCE`, 'good'); MP.SFX.play('alliance'); }
@@ -6239,6 +6313,61 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     } else { G.addRel(b.id, p.id, -6); MP.SFX.play('decline'); }
     MP.HUD && MP.HUD.renderOffers();
   };
+
+  // ---------------- allied target (player marks an enemy for allies / party to focus) ----------------
+  D.setTarget = function (p, n) {
+    const S = G.S;
+    if (p.targetId === n.id) {
+      p.targetId = 0;
+      for (const o of S.nations) if (o && o.ai && o.ai.focus === n.id) o.ai.focus = 0;
+      MP.Game.wire('CABLE', `TARGET ON ${n.name} RESCINDED`, 'cable');
+      MP.Game.toast('Allied target cleared', 'info');
+      return;
+    }
+    const friends = G.alive().filter((o) => o.ai && o.id !== p.id && G.isAllied(o.id, p.id));
+    if (!friends.length) { MP.Game.toast('You have no allies or party to direct', 'bad'); MP.SFX.play('error'); return; }
+    p.targetId = n.id;
+    let yes = 0;
+    for (const o of friends) {
+      if (G.isAllied(o.id, n.id)) continue;
+      const odds = o.partner || (o.team && o.team === p.team) ? 0.97 : U.clamp(0.4 + G.rel(o.id, p.id) / 120 - G.rel(o.id, n.id) / 200, 0.1, 0.95);
+      if (S.rng() < odds) { o.ai.focus = n.id; o.ai.focusUntil = S.t + 240; yes++; G.addRel(o.id, n.id, -10); }
+    }
+    MP.Game.wire('CABLE', yes ? `${yes} ${yes === 1 ? 'ALLY COMMITS' : 'ALLIES COMMIT'} TO THE STRIKE ON ${n.name}` : `YOUR ALLIES WILL NOT MOVE ON ${n.name}`, yes ? 'good' : 'cable');
+    MP.Game.notify('diplo.target', { nation: n.name, text: yes ? `${n.name} is marked. ${yes} ${yes === 1 ? 'ally is' : 'allies are'} moving.` : `Nobody wants ${n.name} badly enough.`, priority: 1 });
+    MP.SFX.play(yes ? 'alliance' : 'decline');
+  };
+
+  D.requestAid = function (p, ally, kind) {
+    const S = G.S;
+    p.aidCd = p.aidCd || {};
+    const key = ally.id + kind;
+    if ((p.aidCd[key] || 0) > S.t) { MP.Game.toast(`${ally.name} was asked recently — wait ${Math.ceil(p.aidCd[key] - S.t)}s`, 'bad'); return; }
+    p.aidCd[key] = S.t + 45;
+    D.pending.push({ kind: 'aid', what: kind, from: p.id, to: ally.id, at: S.t + 1 + S.rng() * 2.5 });
+    MP.Game.toast(`Requested ${kind} from ${ally.name}`, 'info');
+    MP.SFX.play('send');
+  };
+  function answerAid(r, a, b) {
+    const S = G.S;
+    if (!G.isAllied(a.id, b.id)) return;
+    const partner = b.partner || (b.team && b.team === a.team);
+    let odds = partner ? 0.8 : U.clamp(0.25 + G.rel(b.id, a.id) / 140, 0.05, 0.85);
+    const underFire = S.t - b.lastHitAt < 10;
+    if (r.what === 'troops') { odds += b.troops / Math.max(1, b.cap) > 0.55 ? 0.2 : -0.25; if (underFire) odds -= 0.35; }
+    else odds += b.credits > 25000 ? 0.15 : -0.3;
+    if (a.lastHitAt && S.t - a.lastHitAt < 15) odds += 0.15; // helping a friend under attack
+    if (S.rng() < odds) {
+      const amt = r.what === 'troops' ? b.troops * (0.1 + S.rng() * 0.12) : b.credits * (0.12 + S.rng() * 0.15);
+      const got = D.gift(b, a, r.what, amt);
+      MP.Game.wire('CABLE', `${b.name} SENDS YOU ${U.fmtK(got)} ${r.what.toUpperCase()}`, 'good');
+      MP.Game.notify('diplo.gift', { nation: b.name });
+      MP.SFX.play(r.what === 'troops' ? 'alliance' : 'coin');
+    } else {
+      MP.Game.wire('CABLE', `${b.name} DECLINES YOUR REQUEST FOR ${r.what.toUpperCase()}`, 'cable');
+      MP.SFX.play('decline');
+    }
+  }
 
   // ---------------- betrayal check (AI side) ----------------
   D.tickBetrayal = function () {
@@ -6664,6 +6793,12 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
 
   AI.pickTarget = function (n, pers) {
     const S = G.S, ai = n.ai;
+    if (ai.focus) {
+      const f = S.nations[ai.focus];
+      if (!f || !f.alive || ai.focusUntil < S.t || G.isAllied(n.id, f.id)) ai.focus = 0;
+      else if (ai.neighbors.has(f.id) && G.canAttack(n.id, f.id)) return f;
+      else if (S.t - ai.lastBoat > 30 && n.troops > n.cap * 0.4) { AI.boatAttackOn(n, f); }
+    }
     let best = null, bs = 0;
     const myS = MP.Diplo.strength(n);
     const myDensity = n.troops / Math.max(1, n.tiles);
@@ -6707,6 +6842,18 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     MP.Naval.launchTransport(n, best, n.troops * 0.3);
   };
 
+  AI.boatAttackOn = function (n, f) {
+    const S = G.S, W = World.W;
+    n.ai.lastBoat = S.t;
+    const coast = [];
+    let k = 0;
+    for (const t of f.border) { if (World.coast[t] && (k++ % 5) === 0) coast.push(t); if (coast.length > 60) break; }
+    if (!coast.length) return;
+    let best = coast[0], bd = 1e18;
+    for (const t of coast) { const d = U.dist2(t % W, (t / W) | 0, n.capX, n.capY); if (d < bd) { bd = d; best = t; } }
+    MP.Naval.launchTransport(n, best, n.troops * 0.3);
+  };
+
   AI.onStruck = function (v, attacker, w) {
     const ai = v.ai;
     if (!ai) return;
@@ -6725,10 +6872,11 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     else if (!late && S.t - ai.lastNuke > 110 / (pers.nuke * nukeMul) && S.rng() < 0.07 * pers.nuke * nukeMul) {
       // strike a stronger enemy we're at war with, or a grudge
       let bs = 0;
+      if (ai.focus && S.nations[ai.focus] && S.nations[ai.focus].alive) n.wars.add(ai.focus);
       for (const o of n.wars) {
         const e = S.nations[o];
         if (!e || !e.alive || G.isAllied(n.id, o)) continue;
-        let s = MP.Diplo.strength(e) / Math.max(1, MP.Diplo.strength(n)) + (ai.grudge.get(o) || 0) * 0.4 + (pers.nuke - 0.6);
+        let s = MP.Diplo.strength(e) / Math.max(1, MP.Diplo.strength(n)) + (ai.grudge.get(o) || 0) * 0.4 + (pers.nuke - 0.6) + (ai.focus === o ? 0.6 : 0);
         if (e.isPlayer && S.t < 600) s -= 0.3;
         if (s > bs) { bs = s; target = o; }
       }
@@ -7323,6 +7471,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
   const R = (MP.Render = {});
   let cv, ctx, DPR = 1, VW = 0, VH = 0;
   let terrainCv, terrCv, terrCtx, terrImg, terrData;
+  let softCv, softCtx, softImg, softData, stripeCv, stripeCtx, stripePat;
   let dirtyFlag, dirtyList = [], dirtyCount = 0;
   const cam = { x: 1000, y: 470, z: 1, tx: null, ty: null, tz: null };
   R.cam = cam;
@@ -7342,6 +7491,16 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     terrCtx = terrCv.getContext('2d');
     terrImg = terrCtx.createImageData(World.W, World.H);
     terrData = new Uint32Array(terrImg.data.buffer);
+    softCv = document.createElement('canvas'); softCv.width = World.W; softCv.height = World.H;
+    softCtx = softCv.getContext('2d');
+    softImg = softCtx.createImageData(World.W, World.H);
+    softData = new Uint32Array(softImg.data.buffer);
+    stripeCv = document.createElement('canvas'); stripeCtx = stripeCv.getContext('2d');
+    const pc = document.createElement('canvas'); pc.width = 10; pc.height = 10;
+    const pcx = pc.getContext('2d');
+    pcx.strokeStyle = '#fff'; pcx.lineWidth = 2.2;
+    pcx.beginPath(); pcx.moveTo(-2, 12); pcx.lineTo(12, -2); pcx.moveTo(8, 12); pcx.lineTo(12, 8); pcx.moveTo(-2, 2); pcx.lineTo(2, -2); pcx.stroke();
+    stripePat = stripeCtx.createPattern(pc, 'repeat');
     dirtyFlag = new Uint8Array(World.N);
     cam.z = R.minZoom() * 1.05;
   };
@@ -7394,6 +7553,8 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
   R.resetMatch = function () {
     terrData.fill(0);
     terrCtx.putImageData(terrImg, 0, 0);
+    softData.fill(0);
+    softCtx.putImageData(softImg, 0, 0);
     dirtyFlag.fill(0); dirtyList = []; dirtyCount = 0;
     effects.length = 0;
     labelCursor = 1;
@@ -7419,10 +7580,9 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     const c = n.color;
     if (G.isBorderTile(t, o)) {
       // bright border; slight lightening
-      return pack(Math.min(255, c[0] + 40), Math.min(255, c[1] + 40), Math.min(255, c[2] + 40), 255);
+      return pack(Math.min(255, c[0] + 55), Math.min(255, c[1] + 55), Math.min(255, c[2] + 55), 255);
     }
-    if (soft && ((x + y) % 6) < 2) return pack(Math.min(255, c[0] + 60), Math.min(255, c[1] + 60), Math.min(255, c[2] + 60), 125);
-    let a = 92;
+    let a = 105;
     let col = c;
     switch (n.pattern) {
       case 'hazard': if (((x + y) >> 2) & 1) { col = [20, 18, 12]; a = 70; } else a = 105; break;
@@ -7446,13 +7606,17 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
       const t = list[i];
       dirtyFlag[t] = 0;
       terrData[t] = tileColor(t);
+      softData[t] = (G.S.owner[t] && G.S.softUntil[t] > G.S.t) ? 0xffffffff : 0;
       const x = t % W, y = (t / W) | 0;
       const k = ((y / CH) | 0) * 64 + ((x / CH) | 0);
       let r = chunks.get(k);
       if (!r) { r = [x, y, x, y]; chunks.set(k, r); }
       else { if (x < r[0]) r[0] = x; if (y < r[1]) r[1] = y; if (x > r[2]) r[2] = x; if (y > r[3]) r[3] = y; }
     }
-    for (const r of chunks.values()) terrCtx.putImageData(terrImg, 0, 0, r[0], r[1], r[2] - r[0] + 1, r[3] - r[1] + 1);
+    for (const r of chunks.values()) {
+      terrCtx.putImageData(terrImg, 0, 0, r[0], r[1], r[2] - r[0] + 1, r[3] - r[1] + 1);
+      softCtx.putImageData(softImg, 0, 0, r[0], r[1], r[2] - r[0] + 1, r[3] - r[1] + 1);
+    }
   }
   R.redrawAll = function () {
     const S = G.S; if (!S) return;
@@ -7552,34 +7716,49 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
       const dw = (sx1 - sx0) * cam.z, dh = (sy1 - sy0) * cam.z;
       ctx.drawImage(terrainCv, sx0, sy0, sx1 - sx0, sy1 - sy0, dx, dy, dw, dh);
       if (S) {
-        flushTerritory();
+        if (R.prof) { const t0 = performance.now(); flushTerritory(); R.prof.flush = (R.prof.flush || 0) + performance.now() - t0; } else flushTerritory();
         ctx.drawImage(terrCv, sx0, sy0, sx1 - sx0, sy1 - sy0, dx, dy, dw, dh);
+        // fresh (soft) land: crisp screen-space hatching at every zoom level
+        const bw = cv.width, bh = cv.height;
+        if (stripeCv.width !== bw || stripeCv.height !== bh) { stripeCv.width = bw; stripeCv.height = bh; }
+        stripeCtx.setTransform(1, 0, 0, 1, 0, 0);
+        stripeCtx.globalCompositeOperation = 'source-over';
+        stripeCtx.clearRect(0, 0, bw, bh);
+        stripeCtx.imageSmoothingEnabled = false;
+        stripeCtx.drawImage(softCv, sx0, sy0, sx1 - sx0, sy1 - sy0, (dx + shx) * DPR, (dy + shy) * DPR, dw * DPR, dh * DPR);
+        stripeCtx.globalCompositeOperation = 'source-in';
+        stripeCtx.fillStyle = stripePat;
+        stripeCtx.fillRect(0, 0, bw, bh);
+        ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 0.33;
+        ctx.drawImage(stripeCv, 0, 0);
+        ctx.restore();
       }
     }
     // screen grid (tactical)
     drawGrid();
     if (!S) return;
     ctx.imageSmoothingEnabled = true;
-    updateLabels(6);
-    drawFallout();
-    drawStorms(true);
-    drawRoads();
-    drawRanges();
-    drawAllyLines();
-    drawDeposits();
-    drawStructs();
-    drawConvoys();
-    drawShips();
-    drawCapitals();
-    drawAttacks();
-    drawMissiles();
-    drawEffects(dtReal);
-    drawStorms(false);
-    drawLabels();
-    drawCursor();
+    const P = R.prof;
+    const T = P ? (k, fn) => { const t0 = performance.now(); fn(); P[k] = (P[k] || 0) + performance.now() - t0; } : (k, fn) => fn();
+    T('labelsU', () => updateLabels(6));
+    T('fallout', drawFallout);
+    T('storms', () => drawStorms(true));
+    T('roads', drawRoads);
+    T('ranges', drawRanges);
+    T('ally', drawAllyLines);
+    T('deposits', drawDeposits);
+    T('structs', drawStructs);
+    T('convoys', drawConvoys);
+    T('ships', drawShips);
+    T('capitals', drawCapitals);
+    T('attacks', drawAttacks);
+    T('missiles', drawMissiles);
+    T('effects', () => drawEffects(dtReal));
+    T('storms2', () => drawStorms(false));
+    T('labels', drawLabels);
+    T('cursor', drawCursor);
     miniT -= dtReal;
-    if (miniT <= 0) { miniT = 0.4; drawMinimap(); }
-    drawMiniView();
+    T('mini', () => { if (miniT <= 0) { miniT = 0.4; drawMinimap(); } drawMiniView(); });
   };
 
   function drawGrid() {
@@ -7651,12 +7830,17 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
 
   function drawRoads() {
     const S = G.S;
-    if (cam.z < 0.9) return;
+    if (cam.z < 1.1) return;
+    const p = G.player();
+    const showOthers = cam.z >= 3;
     for (const r of S.roads) {
+      const mine = p && (r.owner === p.id || G.isAllied(r.owner, p.id));
+      if (!mine && !showOthers) continue;
       const [x1, y1] = R.w2s(r.x1, r.y1), [x2, y2] = R.w2s(r.x2, r.y2);
       if (Math.max(x1, x2) < -10 || Math.min(x1, x2) > VW + 10 || Math.max(y1, y2) < -10 || Math.min(y1, y2) > VH + 10) continue;
-      if (r.kind === 'white') { ctx.strokeStyle = 'rgba(240,238,225,0.55)'; ctx.lineWidth = Math.max(1.6, cam.z * 0.5); }
-      else { ctx.strokeStyle = 'rgba(160,160,150,0.35)'; ctx.lineWidth = Math.max(1, cam.z * 0.22); }
+      const k = mine ? 1 : 0.4;
+      if (r.kind === 'white') { ctx.strokeStyle = `rgba(240,238,225,${0.42 * k})`; ctx.lineWidth = U.clamp(cam.z * 0.3, 1.2, 3); }
+      else { ctx.strokeStyle = `rgba(170,168,155,${0.3 * k})`; ctx.lineWidth = U.clamp(cam.z * 0.15, 0.8, 1.6); }
       ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
     }
   }
@@ -7758,13 +7942,14 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
   function drawStructs() {
     const S = G.S;
     const p = G.player();
-    const base = U.clamp(cam.z * 4.2, 10, 26);
+    const base = U.clamp(cam.z * 3.6, 9, 24);
     R.hoverStruct = null;
     for (const s of S.structs) {
       if (!onScreen(s.x, s.y)) continue;
       const big = s.type === 'city' || s.type === 'silo' || s.type === 'port';
-      if (cam.z < 0.9 && !big) continue;
-      if (cam.z < 0.55) continue;
+      const mine = p && (s.owner === p.id || G.isAllied(s.owner, p.id));
+      if (mine) { if (cam.z < 0.9 && !big) continue; if (cam.z < 0.55) continue; }
+      else { if (cam.z < (big ? 1.7 : 2.6)) continue; }
       const n = S.nations[s.owner];
       const size = Math.round(base * (s.type === 'city' ? 1.05 : 0.92));
       const [sx, sy] = R.w2s(s.x + 0.5, s.y + 0.5);
@@ -7891,30 +8076,83 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     ctx.fillText(text, sx, sy + 0.5);
   }
 
+  // front-line geometry (centre, along-front angle, normal pointing at the attacker), cached briefly
+  function frontGeom(at) {
+    if (at._g && timeNow - at._g.t < 0.35) return at._g;
+    const S = G.S, W = World.W, f = at.front;
+    if (!f.length) return null;
+    const step = Math.max(1, Math.floor(f.length / 90));
+    const xs = [], ys = [];
+    let mx = 0, my = 0;
+    for (let i = 0; i < f.length; i += step) { const t = f[i]; const x = t % W, y = (t / W) | 0; xs.push(x); ys.push(y); mx += x; my += y; }
+    const c = xs.length; mx /= c; my /= c;
+    let cxx = 0, cyy = 0, cxy = 0;
+    for (let i = 0; i < c; i++) { const dx = xs[i] - mx, dy = ys[i] - my; cxx += dx * dx; cyy += dy * dy; cxy += dx * dy; }
+    const ang = 0.5 * Math.atan2(2 * cxy, cxx - cyy);
+    const a = S.nations[at.from];
+    let nx = -Math.sin(ang), ny = Math.cos(ang);
+    const ax = a && a.tiles ? a.sx / a.tiles : mx, ay = a && a.tiles ? a.sy / a.tiles : my;
+    if ((ax - mx) * nx + (ay - my) * ny < 0) { nx = -nx; ny = -ny; }
+    let la = ang; if (la > Math.PI / 2) la -= Math.PI; if (la < -Math.PI / 2) la += Math.PI;
+    at._g = { t: timeNow, x: mx, y: my, ang: la, nx, ny };
+    return at._g;
+  }
+
+  function frontNumber(x, y, ang, text, px, fill, accent) {
+    const [sx, sy] = R.w2s(x, y);
+    ctx.save();
+    ctx.translate(sx, sy); ctx.rotate(ang);
+    ctx.font = `800 ${px}px ${MP.FONT_HEAD}`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+    ctx.strokeStyle = 'rgba(4,4,3,0.85)'; ctx.lineWidth = Math.max(3, px * 0.22);
+    ctx.strokeText(text, 0, 0);
+    ctx.fillStyle = fill; ctx.fillText(text, 0, 0);
+    if (accent) { const w = ctx.measureText(text).width; ctx.fillStyle = accent; ctx.fillRect(-w / 2, px * 0.58, w, Math.max(1.5, px * 0.09)); }
+    ctx.restore();
+  }
+
   function drawAttacks() {
     const S = G.S, p = G.player();
-    if (!p) return;
+    const fs = U.clamp(cam.z * 4.2, 11, 22);
     for (const at of S.attacks) {
       if (at.done || !at.front.length) continue;
-      const mine = at.from === p.id, onUs = at.to === p.id;
-      if (!mine && !onUs) continue;
-      // centre of a few frontier tiles
-      let mx = 0, my = 0, c = 0;
-      const step = Math.max(1, Math.floor(at.front.length / 12));
-      for (let i = 0; i < at.front.length; i += step) { const t = at.front[i]; mx += t % World.W; my += (t / World.W) | 0; c++; }
-      mx /= c; my /= c;
-      if (!onScreen(mx, my)) continue;
-      const [sx, sy] = R.w2s(mx, my);
-      if (mine) pill(sx, sy, '⊕ ' + U.fmtK(at.troops), '#ece6cf', 'rgba(14,13,10,0.85)', 'rgba(166,227,90,0.8)');
-      else {
-        pill(sx, sy, '▼ ' + U.fmtK(at.troops), '#fff', 'rgba(120,20,10,0.85)', '#ff4433');
-        // red glow along their front
+      const mine = p && at.from === p.id, onUs = p && at.to === p.id;
+      const watch = !p || S.opts.mode === 'watch';
+      if (!mine && !onUs && (cam.z < (watch ? 1.0 : 2.2) || at.troops < 2500)) continue;
+      const g = frontGeom(at);
+      if (!g || !onScreen(g.x, g.y, 80)) continue;
+      if (onUs) {
         ctx.fillStyle = 'rgba(255,68,51,0.35)';
         const sz = Math.max(2, cam.z);
         for (let i = 0; i < at.front.length; i += Math.max(1, Math.floor(at.front.length / 300))) {
           const t = at.front[i]; const [fx, fy] = R.w2s(t % World.W, (t / World.W) | 0); ctx.fillRect(fx, fy, sz, sz);
         }
       }
+      const off = (fs * 0.85) / cam.z + 1.2;
+      const an = S.nations[at.from], dn = at.to ? S.nations[at.to] : null;
+      // the attacker's committed troops — on the attacker's side of the line
+      frontNumber(g.x + g.nx * off, g.y + g.ny * off, g.ang, U.fmtInt(at.troops), fs,
+        onUs ? '#ffc2b8' : '#ffffff', an ? U.rgb(an.color) : null);
+      // defenders show a number only once they commit troops to this front
+      if (dn && at.def > 0) frontNumber(g.x - g.nx * off, g.y - g.ny * off, g.ang, U.fmtInt(at.def), fs * 0.9, mine ? '#ffc2b8' : '#ffffff', U.rgb(dn.color));
+    }
+    // encircled pockets
+    if (S.pockets) for (const pk of S.pockets) {
+      const inv = p && (pk.nation === p.id || pk.by === p.id);
+      if (!inv && cam.z < 1.3) continue;
+      if (!onScreen(pk.x, pk.y)) continue;
+      const [sx, sy] = R.w2s(pk.x, pk.y);
+      const r = Math.max(8, Math.sqrt(pk.size) * cam.z * 0.6);
+      ctx.save();
+      ctx.strokeStyle = pk.nation === p?.id ? 'rgba(255,68,51,0.9)' : 'rgba(236,230,207,0.85)'; ctx.lineWidth = 2;
+      ctx.setLineDash([3, 4]); ctx.lineDashOffset = -timeNow * 12;
+      ctx.beginPath(); ctx.arc(sx, sy, r, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+      ctx.restore();
+      ctx.font = `700 ${U.clamp(fs * 0.8, 10, 17)}px ${MP.FONT_HEAD}`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.lineJoin = 'round';
+      const txt = U.fmtInt(pk.troops) + ' Encircled';
+      ctx.strokeStyle = 'rgba(4,4,3,0.85)'; ctx.lineWidth = 3; ctx.strokeText(txt, sx, sy - r - 3);
+      ctx.fillStyle = pk.nation === p?.id ? '#ff8a7a' : 'rgba(236,230,207,0.92)'; ctx.fillText(txt, sx, sy - r - 3);
     }
   }
 
@@ -8045,30 +8283,42 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
 
   function drawLabels() {
     const S = G.S, p = G.player();
-    const minPx = 8;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const items = [];
     for (const n of S.nations) {
       if (!n || !n.alive || !n.label) continue;
       const L = n.label;
-      let px = L.size * cam.z;
-      if (n === p) px = Math.max(px, 11);
-      if (px < minPx) continue;
-      px = Math.min(px, 46);
+      const me = n === p;
+      let px = L.size * cam.z * 0.8;
+      if (me) px = Math.max(px, 12);
+      if (px < 9) continue;
+      px = Math.min(px, me ? 34 : 28);
       if (!onScreen(L.x, L.y, px * n.name.length)) continue;
+      items.push({ n, px, me });
+    }
+    // player first, then biggest — later labels that would overlap are skipped
+    items.sort((a, b) => (b.me - a.me) || (b.px - a.px));
+    const placed = [];
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+    for (const it of items) {
+      const n = it.n, L = n.label, px = it.px, me = it.me;
       const [sx, sy] = R.w2s(L.x, L.y);
+      ctx.font = `900 ${px}px ${MP.FONT_HEAD}`;
+      const spacing = px * 0.14;
+      const text = n.name;
+      const ws = []; let total = 0;
+      for (const ch of text) { const w = ctx.measureText(ch).width; ws.push(w); total += w + spacing; }
+      total -= spacing;
+      const cs = Math.abs(Math.cos(L.ang)), sn = Math.abs(Math.sin(L.ang)), hh = px * 1.75;
+      const bw = total * cs + hh * sn, bh = total * sn + hh * cs;
+      const box = [sx - bw / 2, sy - bh / 2, sx + bw / 2, sy + bh / 2];
+      if (!me && placed.some((b) => b[0] < box[2] && b[2] > box[0] && b[1] < box[3] && b[3] > box[1])) continue;
+      placed.push(box);
       ctx.save();
       ctx.translate(sx, sy); ctx.rotate(L.ang);
       const c = n.color;
-      ctx.font = `900 ${px}px ${MP.FONT_HEAD}`;
-      const spacing = px * 0.18;
-      const text = n.name;
-      // measure with spacing
-      let total = 0; const ws = [];
-      for (const ch of text) { const w = ctx.measureText(ch).width; ws.push(w); total += w + spacing; }
-      total -= spacing;
-      const arcR = total * 2.6; // gentle arc
+      const arcR = total * 3.2;
       let x = -total / 2;
-      ctx.lineJoin = 'round';
+      const fill = me ? '#fff4c8' : U.rgb(U.mix(c, [255, 255, 255], 0.6), 0.92);
       for (let i = 0; i < text.length; i++) {
         const ch = text[i], w = ws[i];
         const cx = x + w / 2;
@@ -8076,21 +8326,20 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
         const yOff = arcR - Math.cos(ang) * arcR;
         ctx.save();
         ctx.translate(cx, yOff - px * 0.2); ctx.rotate(ang);
-        ctx.strokeStyle = 'rgba(5,5,4,0.75)'; ctx.lineWidth = Math.max(2, px * 0.16);
+        ctx.strokeStyle = 'rgba(5,5,4,0.85)'; ctx.lineWidth = Math.max(2.5, px * 0.2);
         ctx.strokeText(ch, 0, 0);
-        ctx.fillStyle = n === p ? '#fff4c8' : U.rgb(U.mix(c, [255, 255, 255], 0.55));
+        ctx.fillStyle = fill;
         ctx.fillText(ch, 0, 0);
         ctx.restore();
         x += w + spacing;
       }
-      if (px >= 10) {
-        const tp = Math.max(9, px * 0.42);
-        ctx.font = `bold ${tp}px ${MP.FONT_MONO}`;
-        ctx.strokeStyle = 'rgba(5,5,4,0.8)'; ctx.lineWidth = 3;
-        const tt = U.fmtK(n.troops);
-        ctx.strokeText(tt, 0, px * 0.72); ctx.fillStyle = U.rgb(U.mix(c, [255, 255, 255], 0.3)); ctx.fillText(tt, 0, px * 0.72);
-      }
-      if (n.traitorUntil > S.t && px > 10) { ctx.font = `bold ${Math.max(8, px * 0.32)}px ${MP.FONT_MONO}`; ctx.fillStyle = '#ff4433'; ctx.fillText('⚠ TRAITOR', 0, -px * 0.85); }
+      const tp = Math.max(9, px * 0.45);
+      ctx.font = `bold ${tp}px ${MP.FONT_MONO}`;
+      ctx.strokeStyle = 'rgba(5,5,4,0.85)'; ctx.lineWidth = 3;
+      const tt = U.fmtK(n.troops);
+      ctx.strokeText(tt, 0, px * 0.74); ctx.fillStyle = U.rgb(U.mix(c, [255, 255, 255], 0.35)); ctx.fillText(tt, 0, px * 0.74);
+      if (p && p.targetId === n.id) { ctx.font = `bold ${Math.max(9, px * 0.38)}px ${MP.FONT_MONO}`; ctx.fillStyle = '#ff4433'; ctx.fillText('⌖ ALLIED TARGET', 0, -px * 0.9); }
+      else if (n.traitorUntil > S.t && px > 10) { ctx.font = `bold ${Math.max(8, px * 0.32)}px ${MP.FONT_MONO}`; ctx.fillStyle = '#ff4433'; ctx.fillText('⚠ TRAITOR', 0, -px * 0.85); }
       ctx.restore();
     }
   }
@@ -8191,11 +8440,13 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
           <button class="btn sm" data-sp="4">4×</button>
         </div>
         <button class="btn sm" id="h-save" title="Save match">SAVE</button>
+        <button class="btn sm" id="h-fs" title="Toggle fullscreen">⛶</button>
       </div>
     </div>
 
     <div class="hud-tr">
       <div class="panel lb brk" id="h-lb"><div class="lb-head"><span>#</span><span>NATION</span><span><img class="ico" src="${MP.Icons.url('flag', '#8d8670', 32)}"></span><span><img class="ico" src="${MP.Icons.url('troops', '#8d8670', 32)}"></span></div><div id="h-lb-rows"></div></div>
+      <div class="panel target-chip brk" id="h-target" style="display:none"></div>
       <div class="panel attacks brk" id="h-attacks"><div class="ph"><span class="t">⊕ ATTACKS</span><span id="h-att-count">0 OUT</span></div><div id="h-att-rows"></div></div>
       <div class="panel effects brk" id="h-effects" style="display:none"></div>
     </div>
@@ -8257,6 +8508,8 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
         h('img', { class: 'gl', src: MP.Icons.url(b.icon, '#ece6cf', 40), draggable: 'false' }),
         h('span', { class: 'c', id: 'cost-' + type }, ''));
       btn.addEventListener('click', () => HUD.setBuildMode(type));
+      btn.addEventListener('mouseenter', (e) => HUD.showTip(e.currentTarget, buildTip(type), 'up'));
+      btn.addEventListener('mouseleave', () => HUD.hideTip());
       bar.appendChild(btn);
     }
   };
@@ -8272,6 +8525,8 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
       const btn = h('button', { class: 'dslot', 'data-type': type, title: b.name + ' — ' + defDesc(type) },
         h('span', { class: 'k' }, b.key), h('img', { class: 'gl', src: MP.Icons.url(b.icon, '#ece6cf', 40), draggable: 'false' }), h('span', { class: 'c', id: 'cost-' + type }, ''));
       btn.addEventListener('click', () => HUD.setBuildMode(type));
+      btn.addEventListener('mouseenter', (e) => HUD.showTip(e.currentTarget, buildTip(type)));
+      btn.addEventListener('mouseleave', () => HUD.hideTip());
       defrow.appendChild(btn);
     }
     const wrow = document.getElementById('h-wpnrow');
@@ -8287,6 +8542,20 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     }
     document.getElementById('h-launchall').addEventListener('click', () => { HUD.launchAll = !HUD.launchAll; MP.SFX.play('toggle'); HUD.syncLaunchAll(); });
   };
+  const BUILD_DESC = {
+    city: 'Raises your troop cap by 25k per level. Convoys stop here.',
+    port: 'Coastal only. Sends trade ships to friendly ports and builds warships. Convoys stop here.',
+    factory: 'Sends convoys to cities, ports and factories within ' + C.FACTORY_RANGE + ' tiles — income for both ends. Each level doubles convoys and gold.',
+    hub: 'Links factories, cities and ports within ' + C.HUB_RANGE + ' tiles with white roads: convoys 25% faster and reach two stops.',
+    enrich: 'Must sit on a free ☢ deposit. Removes the 200 uranium cap and adds +' + C.ENRICH_RATE + ' U/s per level.',
+    fort: 'Within ' + C.FORT_RADIUS + ' tiles (doubling per level) attackers pay ×5 troops and advance ×3 slower.',
+    warship: 'Built at your nearest port. Hunts warships and transports, seizes enemy trade ships. Click it, then the sea, to set a patrol.',
+    silo: 'Launches researched missiles. One ready missile per level; reloads in ' + C.SILO_RELOAD + 's.',
+  };
+  function buildTip(type) {
+    const p = G.player(); const c = p ? G.structCost(p, type) : { credits: C.BUILD[type].base, u: C.BUILD[type].u };
+    return `<b>${C.BUILD[type].name}</b> <span class="dim">[${C.BUILD[type].key}]</span><br>${BUILD_DESC[type] || defDesc(type)}<br><span class="y">${U.fmtK(c.credits)} credits${c.u ? ' · ' + c.u + ' U' : ''}</span> <span class="dim">· place on your own to upgrade</span>`;
+  }
   function defDesc(type) {
     const d = C.DEFENSE[type];
     if (type === 'radar') return `detects launches within ${d.range} tiles — earlier warning raises every interception chance`;
@@ -8358,6 +8627,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     document.getElementById('h-resign').addEventListener('click', () => HUD.confirm('Resign the match?', 'Your nation will surrender.', () => MP.Game.resign()));
     document.getElementById('h-settings').addEventListener('click', () => MP.Menu.openSettings(true));
     document.getElementById('h-save').addEventListener('click', () => MP.Game.save(false));
+    document.getElementById('h-fs').addEventListener('click', () => MP.toggleFullscreen());
     document.getElementById('h-banner-x').addEventListener('click', () => HUD.clearMode());
     els['h-speed'].addEventListener('click', (e) => {
       const b = e.target.closest('button'); if (!b) return;
@@ -8554,13 +8824,21 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     const allied = p && G.isAllied(p.id, o);
     const opts = [];
     opts.push({ id: 'info', label: 'Info', icon: 'radar' });
-    if (!self && !watch) {
-      opts.push({ id: 'attack', label: 'Attack', icon: 'jet', dis: allied });
-      opts.push({ id: 'boat', label: 'Boat', icon: 'warship', dis: allied });
-      opts.push({ id: 'ally', label: allied ? (n.team && n.team === p.team ? 'Team' : 'Break') : 'Ally', icon: 'flag', dis: n.team && n.team === p.team });
-      opts.push({ id: 'truce', label: 'Truce', icon: 'shield', dis: allied || G.hasTruce(p.id, o) });
+    if (!self && !watch && allied) {
+      const team = n.team && n.team === p.team;
+      opts.push({ id: 'gift', label: 'Gift', icon: 'troops' });
+      opts.push({ id: 'askTroops', label: 'Ask Troops', icon: 'troops' });
+      opts.push({ id: 'askCredits', label: 'Ask Credits', icon: 'coin' });
+      opts.push({ id: 'ally', label: team ? (n.partner ? 'Party' : 'Team') : 'Break', icon: 'flag', dis: team });
       opts.push({ id: 'embargo', label: p.embargo.has(o) ? 'Lift' : 'Embargo', icon: 'coin' });
-      opts.push({ id: 'gift', label: 'Gift', icon: 'troops', dis: !allied });
+    } else if (!self && !watch) {
+      const hasFriends = G.alive().some((x) => x.id !== p.id && x.ai && G.isAllied(x.id, p.id));
+      opts.push({ id: 'attack', label: 'Attack', icon: 'jet' });
+      opts.push({ id: 'boat', label: 'Boat', icon: 'warship' });
+      opts.push({ id: 'ally', label: 'Ally', icon: 'flag' });
+      opts.push({ id: 'truce', label: 'Truce', icon: 'shield', dis: G.hasTruce(p.id, o) });
+      opts.push({ id: 'target', label: p.targetId === o ? 'Untarget' : 'Target', icon: 'nuke', dis: !hasFriends });
+      opts.push({ id: 'embargo', label: p.embargo.has(o) ? 'Lift' : 'Embargo', icon: 'coin' });
     }
     opts.push({ id: 'focus', label: 'Focus', icon: 'capital' });
     const R = 92;
@@ -8608,6 +8886,9 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
         break;
       }
       case 'gift': HUD.giftDialog(n); break;
+      case 'askTroops': MP.Diplo.requestAid(p, n, 'troops'); break;
+      case 'askCredits': MP.Diplo.requestAid(p, n, 'credits'); break;
+      case 'target': MP.Diplo.setTarget(p, n); HUD.refresh(); break;
     }
   };
 
@@ -8741,12 +9022,17 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     setTimeout(() => el.classList.add('out'), 2400);
     setTimeout(() => el.remove(), 3000);
   };
-  HUD.showTip = function (anchor, html) {
+  HUD.showTip = function (anchor, html, dir) {
     const tip = els['h-tip'];
     tip.innerHTML = html; tip.style.display = '';
     const r = anchor.getBoundingClientRect();
-    tip.style.left = Math.max(8, Math.min(window.innerWidth - 290, r.left - 290)) + 'px';
-    tip.style.top = Math.max(8, r.top - 10) + 'px';
+    if (dir === 'up') {
+      tip.style.left = Math.max(8, Math.min(window.innerWidth - 290, r.left + r.width / 2 - 140)) + 'px';
+      tip.style.top = Math.max(8, r.top - tip.offsetHeight - 8) + 'px';
+    } else {
+      tip.style.left = Math.max(8, Math.min(window.innerWidth - 290, r.left - 290)) + 'px';
+      tip.style.top = Math.max(8, r.top - 10) + 'px';
+    }
   };
   HUD.hideTip = function () { els['h-tip'].style.display = 'none'; };
   HUD.savedIndicator = function (ok) { HUD.toast(ok ? 'Match saved' : 'Save failed — storage blocked', ok ? 'good' : 'bad'); };
@@ -8929,12 +9215,27 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
         const tn = a.to ? S.nations[a.to] : null;
         return `<div class="atr"><span class="nm">${tn ? MP.Flags.img(tn.flag, 'flag xs') + ' ' + U.esc(tn.name) : '<img class="ico" src="' + MP.Icons.url('flag', '#8d8670', 32) + '"> UNCLAIMED LAND'}</span><span class="tr">${U.fmtK(a.troops)}</span><button class="btn sm" data-recall="${a.id}">RECALL</button></div>`;
       }).join('') + S.ships.filter((s) => s.owner === p.id && s.kind === 'transport').map((s) => `<div class="atr"><span class="nm">⛴ TRANSPORT → ${s.target ? U.esc(S.nations[s.target].name) : 'COAST'}</span><span class="tr">${U.fmtK(s.troops)}</span><span></span></div>`).join('');
+      const incoming = S.attacks.filter((a) => a.to === p.id && !a.done);
+      els['h-att-rows'].innerHTML += incoming.map((a) => {
+        const an = S.nations[a.from];
+        return `<div class="atr in"><span class="nm">▼ ${MP.Flags.img(an.flag, 'flag xs')} ${U.esc(an.name)}</span><span class="tr">${U.fmtK(a.troops)}${a.def > 0 ? ' <i class="def">⛨' + U.fmtK(a.def) + '</i>' : ''}</span><button class="btn sm defend" data-defend="${a.id}" title="Commit ${Math.round(HUD.ratio * 100)}% of your troops to hold this front">DEFEND</button></div>`;
+      }).join('');
+      els['h-att-count'].textContent = mine.length + ' OUT' + (incoming.length ? ' · ' + incoming.length + ' IN' : '');
       els['h-att-rows'].onclick = (e) => {
-        const b = e.target.closest('[data-recall]'); if (!b) return;
-        const at = S.attacks.find((a) => a.id === Number(b.dataset.recall));
-        if (at) { MP.War.recall(at); MP.Game.notify('attack.recalled', {}); }
+        const b = e.target.closest('[data-recall]');
+        if (b) { const at = S.attacks.find((a) => a.id === Number(b.dataset.recall)); if (at) { MP.War.recall(at); MP.Game.notify('attack.recalled', {}); } return; }
+        const d = e.target.closest('[data-defend]');
+        if (d) {
+          const at = S.attacks.find((a) => a.id === Number(d.dataset.defend));
+          if (at) { const amt = MP.War.commitDefense(at, p.troops * HUD.ratio); if (amt) { MP.SFX.play('attack'); HUD.toast(`${U.fmtK(amt)} troops hold the line against ${S.nations[at.from].name}`, 'good'); } else { MP.SFX.play('error'); HUD.toast('Not enough troops to commit', 'bad'); } }
+        }
       };
-      document.getElementById('h-attacks').style.display = mine.length || S.ships.some((s) => s.owner === p.id && s.kind === 'transport') ? '' : 'none';
+      document.getElementById('h-attacks').style.display = mine.length || incoming.length || S.ships.some((s) => s.owner === p.id && s.kind === 'transport') ? '' : 'none';
+      // allied target chip
+      const tgt = p.targetId && S.nations[p.targetId];
+      const chip = document.getElementById('h-target');
+      if (tgt && tgt.alive) { chip.style.display = ''; chip.innerHTML = `<span class="t">⌖ ALLIED TARGET</span> ${MP.Flags.img(tgt.flag, 'flag xs')} <b>${U.esc(tgt.name)}</b> <button class="btn sm" data-untarget>✕</button>`; chip.onclick = (e) => { if (e.target.closest('[data-untarget]')) MP.Diplo.setTarget(p, tgt); }; }
+      else { chip.style.display = 'none'; if (p.targetId && (!tgt || !tgt.alive)) p.targetId = 0; }
     } else document.getElementById('h-attacks').style.display = 'none';
     // council effects
     const ef = S.council.effects;
@@ -9218,7 +9519,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
       </div>
       <div class="m-tr">
         <span class="scrap"><img class="ico" src="${MP.Icons.url('gear', '#ffd21f', 32)}"> ${U.fmtInt(P.scrap)}</span>
-        <button class="btn m-top" id="m-ranks">RANKS</button><button class="btn m-top" id="m-shop">ARMORY</button><button class="btn icon m-top" id="m-settings">${MP.Icons.svgIcon('gear', '#ece6cf', 32)}</button>
+        <button class="btn m-top" id="m-ranks">RANKS</button><button class="btn m-top" id="m-shop">ARMORY</button><button class="btn m-top" id="m-fs" title="Toggle fullscreen">⛶</button><button class="btn icon m-top" id="m-settings">${MP.Icons.svgIcon('gear', '#ece6cf', 32)}</button>
       </div>
       <div class="m-center">
         <h1 class="m-title" data-text="MIDNIGHT PROTOCOL">MIDNIGHT PROTOCOL</h1>
@@ -9261,6 +9562,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     $('m-ranks').onclick = Menu.openRanks;
     $('m-shop').onclick = Menu.openShop;
     $('m-settings').onclick = () => Menu.openSettings(false);
+    $('m-fs').onclick = () => MP.toggleFullscreen();
     $('m-party-on').onchange = (e) => { P.partyOn = e.target.checked; Menu.save(); Menu.render(); };
     root.querySelectorAll('.party-slots [data-pi]').forEach((b) => { b.onclick = () => Menu.editPartyBot(Number(b.dataset.pi)); });
     root.querySelectorAll('.reroll').forEach((b) => { b.onclick = () => {
@@ -9369,6 +9671,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     if (!opts) opts = Menu.makeOpts('ffa');
     Menu.lastOpts = Object.assign({}, opts, { seed: (Math.random() * 4294967295) >>> 0 });
     MP.audio.unlock();
+    if (MP.settings.get('fullscreen', true)) MP.enterFullscreen();
     Menu.hide();
     document.getElementById('modal-root').innerHTML = '';
     MP.Game.newMatch(opts);
@@ -9648,6 +9951,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
         <label>VOICE <select id="st-vname"><option value="">AUTO (FEMALE)</option>${voices.map((v) => `<option value="${U.esc(v.name)}" ${v.name === cur ? 'selected' : ''}>${U.esc(v.name)} ${v.female ? '♀' : ''} (${v.lang})</option>`).join('')}</select></label>
         <label>SPEECH RATE <b id="st-rate-v">${S.get('advisor.rate', 1).toFixed ? Number(S.get('advisor.rate', 1)).toFixed(2) : 1}</b><input type="range" min="0.8" max="1.3" step="0.02" value="${S.get('advisor.rate', 1)}" id="st-rate"></label>
         <label class="ck"><input type="checkbox" id="st-tut" ${S.get('tutorial', true) ? 'checked' : ''}> TUTORIAL BRIEFINGS</label>
+        <label class="ck"><input type="checkbox" id="st-fs" ${S.get('fullscreen', true) ? 'checked' : ''}> AUTO FULLSCREEN</label>
       </div>
       ${inMatch ? '' : '<div class="row-btns"><button class="btn danger" data-a="reset">RESET PROGRESS</button></div>'}`,
     (box, close) => {
@@ -9657,6 +9961,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
       box.querySelector('#st-vname').onchange = (e) => { MP.Advisor && MP.Advisor.setVoiceName(e.target.value || null); MP.Advisor && MP.Advisor.say('Voice check. Channel is clear.', { priority: 1 }); };
       box.querySelector('#st-rate').oninput = (e) => { S.set('advisor.rate', Number(e.target.value)); box.querySelector('#st-rate-v').textContent = Number(e.target.value).toFixed(2); MP.Advisor && MP.Advisor.setRate(Number(e.target.value)); };
       box.querySelector('#st-tut').onchange = (e) => S.set('tutorial', e.target.checked);
+      box.querySelector('#st-fs').onchange = (e) => { S.set('fullscreen', e.target.checked); if (e.target.checked) MP.enterFullscreen(); };
       box.addEventListener('click', (e) => {
         const b = e.target.closest('[data-a]'); if (!b) return;
         const a = b.dataset.a;
@@ -9769,6 +10074,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
         window.removeEventListener('keydown', start);
         document.getElementById('boot').removeEventListener('click', start);
         MP.audio.unlock();
+        if (MP.settings.get('fullscreen', true)) MP.enterFullscreen();
         MP.SFX.play('phase');
         const b = document.getElementById('boot');
         b.classList.add('out');
