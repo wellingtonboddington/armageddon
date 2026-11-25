@@ -1,0 +1,210 @@
+/* MIDNIGHT PROTOCOL — VESPER advisor. Every selector is .vsp- prefixed; colours come from the host palette. */
+.vsp, .vsp *, .vsp *::before, .vsp *::after { box-sizing: border-box; }
+.vsp {
+  position: relative;
+  color: var(--text, #ece6cf);
+  font-family: var(--mono, "JetBrains Mono", "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+.vsp-cv { display: block; image-rendering: pixelated; image-rendering: crisp-edges; }
+@supports (image-rendering: pixelated) { .vsp-cv { image-rendering: pixelated; } }
+
+/* ---------------------------------------------------------------- HUD radio panel */
+.vsp-hud {
+  display: flex; align-items: stretch; gap: 10px;
+  width: 350px; max-width: 100%;
+  padding: 8px 10px 8px 8px;
+  background: var(--panel, rgba(14, 13, 10, .92));
+  border: 1px solid var(--line, #3a3524);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .45);
+  transition: border-color .25s;
+}
+.vsp-hud::before { /* hazard tape tab */
+  content: ""; position: absolute; left: -1px; top: -1px; width: 58px; height: 3px;
+  background: repeating-linear-gradient(135deg, var(--y, #ffd21f) 0 4px, #000 4px 8px);
+}
+.vsp-hud::after { /* cut corner tick */
+  content: ""; position: absolute; right: -1px; bottom: -1px; width: 9px; height: 9px;
+  border-right: 1px solid var(--y3, #7a6410); border-bottom: 1px solid var(--y3, #7a6410);
+}
+.vsp-pf {
+  position: relative; flex: 0 0 auto; width: 68px; height: 68px; padding: 1px;
+  background: #050504; border: 1px solid var(--y3, #7a6410);
+  transition: border-color .25s;
+}
+.vsp-pf .vsp-cv { width: 64px; height: 64px; }
+.vsp-tick { position: absolute; width: 5px; height: 5px; border: 0 solid var(--y, #ffd21f); pointer-events: none; }
+.vsp-tick.vsp-c-tl { left: -2px; top: -2px; border-left-width: 1px; border-top-width: 1px; }
+.vsp-tick.vsp-c-tr { right: -2px; top: -2px; border-right-width: 1px; border-top-width: 1px; }
+.vsp-tick.vsp-c-bl { left: -2px; bottom: -2px; border-left-width: 1px; border-bottom-width: 1px; }
+.vsp-tick.vsp-c-br { right: -2px; bottom: -2px; border-right-width: 1px; border-bottom-width: 1px; }
+.vsp-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.vsp-head { display: flex; align-items: center; gap: 6px; height: 16px; margin: 0 0 4px; white-space: nowrap; }
+.vsp-dot {
+  flex: none; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--y, #ffd21f); box-shadow: 0 0 0 1px rgba(0, 0, 0, .6);
+}
+.vsp-name {
+  font-family: var(--head, "Bahnschrift", "Arial Narrow", "Roboto Condensed", "DejaVu Sans Condensed", sans-serif);
+  font-weight: 700; font-size: 13px; line-height: 1; letter-spacing: .16em; color: var(--y, #ffd21f);
+}
+.vsp-role {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  font-size: 10px; letter-spacing: .12em; color: var(--dim, #8d8670);
+}
+.vsp-bars { flex: none; margin-left: auto; display: flex; align-items: flex-end; gap: 2px; height: 12px; }
+.vsp-bars i { display: block; width: 3px; background: var(--y3, #7a6410); transform-origin: 50% 100%; }
+.vsp-bars i:nth-child(1) { height: 4px; }
+.vsp-bars i:nth-child(2) { height: 6px; }
+.vsp-bars i:nth-child(3) { height: 8px; }
+.vsp-bars i:nth-child(4) { height: 10px; }
+.vsp-bars i:nth-child(5) { height: 12px; opacity: .45; }
+.vsp-spk {
+  flex: none; display: grid; place-items: center; width: 20px; height: 18px; margin: 0 0 0 2px; padding: 0;
+  appearance: none; -webkit-appearance: none; cursor: pointer;
+  color: var(--y, #ffd21f); background: transparent; border: 1px solid var(--line, #3a3524); border-radius: 0;
+}
+.vsp-spk:hover { border-color: var(--y3, #7a6410); background: rgba(255, 210, 31, .08); }
+.vsp-spk:focus-visible { outline: 1px solid var(--y, #ffd21f); outline-offset: 1px; }
+.vsp-spk svg { width: 14px; height: 14px; overflow: visible; }
+.vsp-ic-body { fill: currentColor; }
+.vsp-ic-on, .vsp-ic-off { fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: square; }
+.vsp-ic-off { display: none; }
+.vsp-off .vsp-spk { color: var(--dim, #8d8670); }
+.vsp-off .vsp-ic-on { display: none; }
+.vsp-off .vsp-ic-off { display: inline; }
+
+.vsp-line {
+  height: 54px; overflow: hidden;
+  font-size: 13px; line-height: 18px; color: var(--text, #ece6cf);
+  overflow-wrap: break-word; transition: color .4s;
+}
+.vsp-rest { visibility: hidden; }
+.vsp-caret { display: inline-block; position: relative; width: 0; height: 1em; vertical-align: -2px; }
+.vsp-caret::after {
+  content: ""; position: absolute; left: 1px; top: 0; width: .55em; height: 1.05em;
+  background: var(--y, #ffd21f); opacity: .85;
+  animation: vsp-caret 1.05s steps(1) infinite;
+}
+.vsp-talk .vsp-caret::after { animation: none; opacity: .9; }
+.vsp-stale .vsp-caret::after { display: none; }
+.vsp-hint {
+  height: 12px; margin-top: 3px;
+  font-size: 10px; line-height: 12px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--y3, #7a6410); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  transition: color .3s;
+}
+.vsp-stale .vsp-line, .vsp-stale .vsp-mline { color: var(--dim, #8d8670); }
+
+/* ---------------------------------------------------------------- CRT overlay + alert tint */
+.vsp-scan, .vsp-tint {
+  position: absolute; top: 1px; left: 1px; right: 1px; bottom: 1px; pointer-events: none; overflow: hidden;
+}
+.vsp-scan {
+  background:
+    repeating-linear-gradient(180deg, rgba(0, 0, 0, .3) 0, rgba(0, 0, 0, .3) 1px, rgba(0, 0, 0, 0) 1px, rgba(0, 0, 0, 0) 3px),
+    radial-gradient(ellipse at 50% 42%, rgba(0, 0, 0, 0) 58%, rgba(0, 0, 0, .42) 100%);
+  animation: vsp-flicker 4.7s steps(1) infinite;
+}
+.vsp-scan::after { /* slow rolling refresh band */
+  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 38%;
+  background: linear-gradient(180deg, rgba(255, 210, 31, 0), rgba(255, 210, 31, .055), rgba(255, 210, 31, 0));
+  transform: translateY(-110%); animation: vsp-roll 6.5s linear infinite;
+}
+.vsp-tint { background: var(--red, #ff4433); opacity: 0; mix-blend-mode: multiply; }
+.vsp-glitch .vsp-tint { animation: vsp-redflash .7s steps(1) 1; }
+.vsp-glitch .vsp-cv { animation: vsp-jitter .7s steps(1) 1; }
+
+/* ---------------------------------------------------------------- states */
+.vsp-talk .vsp-dot { animation: vsp-pulse .9s ease-in-out infinite; }
+.vsp-talk .vsp-bars i { background: var(--y, #ffd21f); opacity: 1; animation: vsp-eq .44s ease-in-out infinite alternate; }
+.vsp-talk .vsp-bars i:nth-child(2) { animation-duration: .36s; animation-delay: -.11s; }
+.vsp-talk .vsp-bars i:nth-child(3) { animation-duration: .52s; animation-delay: -.27s; }
+.vsp-talk .vsp-bars i:nth-child(4) { animation-duration: .31s; animation-delay: -.05s; }
+.vsp-talk .vsp-bars i:nth-child(5) { animation-duration: .47s; animation-delay: -.33s; }
+.vsp-warn .vsp-dot { background: var(--y2, #ffb000); }
+.vsp-warn .vsp-hint { color: var(--y2, #ffb000); }
+.vsp-crit.vsp-hud { border-color: rgba(255, 68, 51, .75); }
+.vsp-crit .vsp-pf, .vsp-crit .vsp-frame { border-color: var(--red, #ff4433); }
+.vsp-crit .vsp-dot { background: var(--red, #ff4433); }
+.vsp-crit .vsp-bars i, .vsp-crit .vsp-blocks i { background: var(--red, #ff4433); }
+.vsp-crit .vsp-hint { color: var(--red, #ff4433); }
+.vsp-crit .vsp-tick, .vsp-crit .vsp-brk { border-color: var(--red, #ff4433); }
+.vsp-crit .vsp-caret::after { background: var(--red, #ff4433); }
+
+/* ---------------------------------------------------------------- main-menu presence */
+.vsp-menu { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; }
+.vsp-frame {
+  position: relative; width: 272px; height: 272px; padding: 7px;
+  background: #050504; border: 1px solid var(--line, #3a3524);
+  box-shadow: inset 0 0 0 1px #000, 0 0 28px rgba(255, 210, 31, .05);
+  transition: border-color .25s;
+}
+.vsp-frame .vsp-cv { width: 256px; height: 256px; }
+.vsp-frame .vsp-scan, .vsp-frame .vsp-tint { top: 7px; left: 7px; right: 7px; bottom: 7px; }
+.vsp-frame .vsp-scan {
+  background:
+    repeating-linear-gradient(180deg, rgba(0, 0, 0, .26) 0, rgba(0, 0, 0, .26) 2px, rgba(0, 0, 0, 0) 2px, rgba(0, 0, 0, 0) 4px),
+    radial-gradient(ellipse at 50% 42%, rgba(0, 0, 0, 0) 60%, rgba(0, 0, 0, .45) 100%);
+}
+.vsp-brk { position: absolute; width: 24px; height: 24px; border: 0 solid var(--y, #ffd21f); pointer-events: none; transition: border-color .25s; }
+.vsp-brk.vsp-c-tl { left: -8px; top: -8px; border-left-width: 3px; border-top-width: 3px; }
+.vsp-brk.vsp-c-tr { right: -8px; top: -8px; border-right-width: 3px; border-top-width: 3px; }
+.vsp-brk.vsp-c-bl { left: -8px; bottom: -8px; border-left-width: 3px; border-bottom-width: 3px; }
+.vsp-brk.vsp-c-br { right: -8px; bottom: -8px; border-right-width: 3px; border-bottom-width: 3px; }
+.vsp-tag {
+  position: absolute; z-index: 1; padding: 1px 5px 1px 4px; pointer-events: none;
+  font-size: 9px; line-height: 12px; letter-spacing: .16em;
+  background: rgba(5, 5, 4, .82); color: var(--y3, #7a6410);
+}
+.vsp-tag-l { left: 13px; top: 13px; color: var(--y, #ffd21f); }
+.vsp-tag-l::before {
+  content: ""; display: inline-block; width: 5px; height: 5px; margin: 0 5px 1px 0; vertical-align: middle;
+  border-radius: 50%; background: var(--y, #ffd21f); animation: vsp-caret 1.6s steps(1) infinite;
+}
+.vsp-crit .vsp-tag-l { color: var(--red, #ff4433); }
+.vsp-crit .vsp-tag-l::before { background: var(--red, #ff4433); }
+.vsp-tag-r { right: 13px; bottom: 13px; }
+.vsp-mname { display: flex; align-items: center; gap: 9px; height: 22px; }
+.vsp-mname .vsp-dot { width: 8px; height: 8px; }
+.vsp-mname .vsp-name { font-size: 18px; letter-spacing: .34em; margin-right: -.1em; }
+.vsp-blocks { display: flex; gap: 3px; }
+.vsp-blocks i { display: block; width: 6px; height: 11px; background: var(--y3, #7a6410); }
+.vsp-talk .vsp-blocks i { background: var(--y, #ffd21f); animation: vsp-chase .9s steps(1) infinite; }
+.vsp-talk .vsp-blocks i:nth-child(2) { animation-delay: -.75s; }
+.vsp-talk .vsp-blocks i:nth-child(3) { animation-delay: -.6s; }
+.vsp-talk .vsp-blocks i:nth-child(4) { animation-delay: -.45s; }
+.vsp-talk .vsp-blocks i:nth-child(5) { animation-delay: -.3s; }
+.vsp-talk .vsp-blocks i:nth-child(6) { animation-delay: -.15s; }
+.vsp-mline {
+  width: 100%; max-width: 460px; min-height: 42px;
+  font-size: 15px; line-height: 21px; color: var(--text, #ece6cf);
+  overflow-wrap: break-word; transition: color .4s;
+}
+.vsp-menu .vsp-hint { width: 100%; max-width: 460px; height: auto; min-height: 12px; margin-top: -4px; }
+.vsp-sr {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
+  overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+}
+
+@media (max-width: 440px) {
+  .vsp-frame { width: 206px; height: 206px; }
+  .vsp-frame .vsp-cv { width: 192px; height: 192px; }
+  .vsp-mline { font-size: 14px; line-height: 20px; }
+}
+
+/* ---------------------------------------------------------------- keyframes */
+@keyframes vsp-caret { 0% { opacity: .85; } 50% { opacity: 0; } }
+@keyframes vsp-pulse { 0%, 100% { box-shadow: 0 0 0 1px rgba(0, 0, 0, .6), 0 0 0 0 rgba(255, 210, 31, .5); } 50% { box-shadow: 0 0 0 1px rgba(0, 0, 0, .6), 0 0 0 4px rgba(255, 210, 31, 0); } }
+@keyframes vsp-eq { 0% { transform: scaleY(.25); } 100% { transform: scaleY(1); } }
+@keyframes vsp-chase { 0% { opacity: 1; } 33% { opacity: .35; } 66% { opacity: .7; } }
+@keyframes vsp-flicker { 0% { opacity: 1; } 31% { opacity: .9; } 32% { opacity: 1; } 67% { opacity: .94; } 68% { opacity: 1; } 89% { opacity: .86; } 90% { opacity: 1; } }
+@keyframes vsp-roll { 0% { transform: translateY(-110%); } 100% { transform: translateY(290%); } }
+@keyframes vsp-redflash { 0% { opacity: .55; } 14% { opacity: 0; } 28% { opacity: .4; } 42% { opacity: .1; } 57% { opacity: .3; } 85% { opacity: 0; } }
+@keyframes vsp-jitter { 0% { transform: translate(2px, 0); } 14% { transform: translate(-3px, 1px); } 28% { transform: translate(1px, -1px); } 42% { transform: translate(-1px, 0); } 57% { transform: translate(2px, 1px); } 71% { transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .vsp-scan, .vsp-scan::after, .vsp-glitch .vsp-cv, .vsp-glitch .vsp-tint, .vsp-talk .vsp-dot { animation: none; }
+  .vsp-talk .vsp-bars i, .vsp-talk .vsp-blocks i { animation-duration: 1.6s; }
+}

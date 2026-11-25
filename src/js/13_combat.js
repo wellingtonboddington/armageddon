@@ -1,0 +1,329 @@
+/* MIDNIGHT PROTOCOL — land warfare: spawning, attacks, forts, supply, pockets, elimination */
+(function () {
+  'use strict';
+  const MP = window.MP, U = MP.U, C = MP.CONFIG, World = MP.World, G = MP.G;
+
+  const War = (MP.War = {});
+
+  // ---------------- spawning ----------------
+  War.spawnAt = function (n, t) {
+    const S = G.S, w = World.W;
+    const cx = t % w, cy = (t / w) | 0;
+    const r = C.SPAWN_RADIUS;
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+      if (dx * dx + dy * dy > r * r) continue;
+      const x = cx + dx, y = cy + dy;
+      if (x < 0 || y < 0 || x >= w || y >= World.H) continue;
+      const u = x + y * w;
+      if (!World.land[u] || S.owner[u]) continue;
+      G.setOwner(u, n.id, 0);
+    }
+    if (S.owner[t] !== n.id) G.setOwner(t, n.id, 0);
+    G.setCapital(n, t);
+    n.spawned = true;
+  };
+
+  War.validSpawn = function (t, minDist) {
+    const S = G.S, w = World.W;
+    if (t < 0 || !World.land[t] || S.owner[t]) return false;
+    const x = t % w, y = (t / w) | 0;
+    if (World.terr[t] >> 2 === 2) return false;
+    const md2 = (minDist || 18) * (minDist || 18);
+    for (const n of S.nations) if (n && n.spawned && U.dist2(n.capX, n.capY, x, y) < md2) return false;
+    // need some land around
+    let c = 0;
+    for (let dy = -6; dy <= 6; dy += 3) for (let dx = -6; dx <= 6; dx += 3) { const u = t + dx + dy * w; if (u >= 0 && u < World.N && World.land[u]) c++; }
+    return c >= 18;
+  };
+
+  War.randomSpawnTile = function (rng, prefer) {
+    const N = World.N;
+    for (let k = 0; k < 4000; k++) {
+      const t = rng.int(N);
+      if (!War.validSpawn(t, k < 2500 ? 22 : 12)) continue;
+      if (prefer === 'deposit' && k < 1500) {
+        const x = t % World.W, y = (t / World.W) | 0;
+        if (!World.deposits.some((d) => !d.owner && U.dist2(d.x, d.y, x, y) < 900)) continue;
+      }
+      if (prefer === 'coast' && k < 1500) {
+        const x = t % World.W, y = (t / World.W) | 0;
+        if (World.navCellNear(x, y, 10) < 0) continue;
+      }
+      return t;
+    }
+    return -1;
+  };
+
+  // ---------------- attacks ----------------
+  function neighbors(t) {
+    const w = World.W, x = t % w;
+    return [x > 0 ? t - 1 : -1, x < w - 1 ? t + 1 : -1, t >= w ? t - w : -1, t < World.N - w ? t + w : -1];
+  }
+  War.neighbors = neighbors;
+
+  War.bordersWith = function (a, b) { // does nation a touch nation b (or unclaimed when b=0)?
+    const S = G.S, owner = S.owner, land = World.land;
+    for (const t of S.nations[a].border) {
+      for (const u of neighbors(t)) if (u >= 0 && owner[u] === b && (b !== 0 || land[u])) return true;
+    }
+    return false;
+  };
+
+  War.launch = function (from, to, troops, opts) {
+    const S = G.S;
+    const a = S.nations[from];
+    if (!a || !a.alive || troops < 1) return null;
+    if (to && !G.canAttack(from, to)) return null;
+    troops = Math.min(troops, a.troops);
+    if (troops < 50) return null;
+    // merge with an existing attack on the same target
+    let at = S.attacks.find((x) => !x.done && x.from === from && x.to === to && !x.boat);
+    // opposing attack cancels troops first
+    const opp = to ? S.attacks.find((x) => !x.done && x.from === to && x.to === from && !x.boat) : null;
+    a.troops -= troops;
+    if (opp) {
+      const m = Math.min(opp.troops, troops);
+      opp.troops -= m; troops -= m;
+      if (opp.troops < 1) opp.done = true;
+      if (troops < 1) return opp;
+    }
+    if (at && !(opts && opts.seed != null)) {
+      at.troops += troops; at.initial += troops;
+      War.refreshFrontier(at);
+      return at;
+    }
+    at = { id: S.nextAttackId++, from, to, troops, initial: troops, front: [], inFront: new Set(), budget: 0, done: false,
+      boat: !!(opts && opts.boat), started: S.t, captured: 0, idle: 0 };
+    S.attacks.push(at);
+    if (opts && opts.seed != null) War.seedFrom(at, opts.seed); else War.refreshFrontier(at);
+    if (to) War.declareWar(from, to);
+    // notifications
+    const d = to ? S.nations[to] : null;
+    if (d && d.isPlayer) {
+      MP.Game.notify('attack.incoming', { nation: a.name, troops: U.fmtK(troops) });
+      MP.SFX.play('invaded');
+      MP.Game.wire('IMINT', `${a.name} PROBES YOUR BORDER`, 'imint');
+    }
+    return at;
+  };
+
+  War.declareWar = function (from, to) {
+    const S = G.S, a = S.nations[from], d = S.nations[to];
+    if (!a || !d) return;
+    const fresh = !a.wars.has(to);
+    a.wars.add(to); d.wars.add(from);
+    G.addRel(to, from, -12);
+    if (fresh) {
+      // defender embargoes the aggressor "for the attack"
+      if (!d.embargo.has(from) && !d.isPlayer) {
+        d.embargo.add(from);
+        if (a.isPlayer) { MP.Game.wire('CABLE', `${d.name} EMBARGOES YOU · FOR THE ATTACK`, 'embargo'); MP.Game.notify('diplo.embargo_us', { nation: d.name }); }
+      }
+      // allies of the defender cool on the attacker
+      for (const al of d.allies) G.addRel(al, from, -10);
+      for (const al of d.allies) { const n = S.nations[al]; if (n && n.isPlayer) MP.Game.notify('diplo.ally_attacked', { nation: d.name }); }
+      S.roadsDirty = true;
+    }
+  };
+
+  War.seedFrom = function (at, t) {
+    const S = G.S;
+    // capture the landing tile directly
+    const own = S.owner[t];
+    if (own === at.from) { War.refreshFrontier(at); return; }
+    if (own !== at.to) at.to = own;
+    G.setOwner(t, at.from, C.DUG_IN_SECONDS);
+    for (const u of neighbors(t)) War.pushFront(at, u);
+    War.refreshFrontier(at, true);
+  };
+
+  War.pushFront = function (at, u) {
+    if (u < 0) return;
+    const S = G.S;
+    if (S.owner[u] !== at.to || !World.land[u] || at.inFront.has(u)) return;
+    at.inFront.add(u); at.front.push(u);
+  };
+
+  War.refreshFrontier = function (at, keep) {
+    const S = G.S, a = S.nations[at.from];
+    if (!keep) { at.front.length = 0; at.inFront.clear(); }
+    for (const t of a.border) for (const u of neighbors(t)) War.pushFront(at, u);
+  };
+
+  function fortFactor(defId, x, y) {
+    if (!defId) return 1;
+    const d = G.S.nations[defId];
+    for (const f of d.st.fort) {
+      if (!G.isActive(f)) continue;
+      const r = C.FORT_RADIUS * Math.pow(2, f.level - 1);
+      if (U.dist2(f.x, f.y, x, y) <= r * r) return 1;
+    }
+    return 0;
+  }
+
+  War.supplyDist = function (n, x, y) {
+    let best = n.capital >= 0 ? U.dist2(n.capX, n.capY, x, y) : 1e12;
+    for (const c of n.st.city) { if (c.build > 0) continue; const d = U.dist2(c.x, c.y, x, y); if (d < best) best = d; }
+    for (const h of n.st.hub) { if (!G.isActive(h)) continue; const d = U.dist2(h.x, h.y, x, y); if (d < best) best = d; }
+    return Math.sqrt(best);
+  };
+
+  War.tileCost = function (at, t) {
+    const S = G.S, a = S.nations[at.from], v = World.terr[t];
+    const w = World.W, x = t % w, y = (t / w) | 0;
+    let cost = C.TERRAIN_COST[v & 3] * C.ELEV_COST[v >> 2];
+    let slow = 1 / C.ELEV_SPEED[v >> 2];
+    if (at.to) {
+      const d = S.nations[at.to];
+      if (!G.isSoft(t) && !MP.Weapons.inFallout(x, y)) cost *= C.DUG_IN_MULT;
+      cost += (d.troops / Math.max(1, d.tiles)) * C.DENSITY_COST;
+      cost *= G.mod(d, 'defendCost');
+      if (fortFactor(at.to, x, y)) { cost *= C.FORT_COST_MULT; slow *= C.FORT_SLOW; }
+    }
+    cost *= G.mod(a, 'attackCost');
+    // supply lines
+    const free = C.SUPPLY_FREE * G.mod(a, 'supply');
+    const sd = War.supplyDist(a, x, y);
+    if (sd > free) cost *= 1 + Math.min(C.SUPPLY_MAX_PENALTY, (sd - free) / C.SUPPLY_SPAN);
+    if (MP.Weather.stormAt(x, y)) slow *= 1.6;
+    if (a.ai) cost /= MP.CONFIG.DIFFICULTY[a.difficulty].eff;
+    return { cost, slow };
+  };
+
+  War.tick = function (dt) {
+    const S = G.S, owner = S.owner;
+    for (let i = 0; i < S.attacks.length; i++) {
+      const at = S.attacks[i];
+      if (at.done) continue;
+      const a = S.nations[at.from];
+      if (!a.alive) { at.done = true; continue; }
+      if (at.to && (!S.nations[at.to].alive || !G.canAttack(at.from, at.to))) { War.finish(at, true); continue; }
+      let speed = (C.ATTACK_SPEED_BASE + Math.sqrt(Math.max(0, at.troops)) * C.ATTACK_SPEED_SQRT) * G.mod(a, 'attackSpeed');
+      if (!at.to) speed *= C.EXPAND_SPEED_MULT;
+      at.budget += speed * dt;
+      let guard = 0;
+      while (at.budget >= 1 && guard++ < 400) {
+        if (!at.front.length) {
+          at.idle++;
+          if (at.idle > 2) { War.finish(at, true); break; }
+          War.refreshFrontier(at);
+          if (!at.front.length) { War.finish(at, true); break; }
+          continue;
+        }
+        const k = S.rng.int(at.front.length);
+        const t = at.front[k];
+        at.front[k] = at.front[at.front.length - 1]; at.front.pop(); at.inFront.delete(t);
+        if (owner[t] !== at.to || !World.land[t]) continue;
+        // must touch attacker land
+        let touch = false;
+        for (const u of neighbors(t)) if (u >= 0 && owner[u] === at.from) { touch = true; break; }
+        if (!touch) continue;
+        const tc = War.tileCost(at, t);
+        if (at.troops < tc.cost) {
+          at.inFront.add(t); at.front.push(t);
+          War.finish(at, false);
+          break;
+        }
+        at.troops -= tc.cost;
+        at.budget -= tc.slow;
+        at.idle = 0;
+        if (at.to) {
+          const d = S.nations[at.to];
+          const loss = Math.min(d.troops, (d.troops / Math.max(1, d.tiles)) * C.DENSITY_LOSS);
+          d.troops -= loss;
+          d.lastHitBy = at.from; d.lastHitAt = S.t;
+        }
+        G.setOwner(t, at.from, C.DUG_IN_SECONDS);
+        at.captured++;
+        for (const u of neighbors(t)) War.pushFront(at, u);
+        if (at.to && S.nations[at.to].tiles <= 0) { G.eliminate(at.to, at.from); War.finish(at, true); break; }
+      }
+    }
+    // cleanup finished attacks
+    for (let i = S.attacks.length - 1; i >= 0; i--) if (S.attacks[i].done) S.attacks.splice(i, 1);
+  };
+
+  War.finish = function (at, returnTroops) {
+    if (at.done) return;
+    const S = G.S, a = S.nations[at.from];
+    at.done = true;
+    if (returnTroops && a && a.alive && at.troops > 0) a.troops += at.troops;
+    const d = at.to ? S.nations[at.to] : null;
+    if (d && d.isPlayer && d.alive && at.captured < 40 && S.t - at.started > 3) MP.Game.notify('attack.repelled', { nation: a.name });
+    if (a && a.isPlayer && !returnTroops && at.captured < 5) MP.Game.notify('attack.stalled', {});
+  };
+
+  War.recall = function (at) {
+    if (at.done) return;
+    War.finish(at, true);
+  };
+
+  // ---------------- pockets / supply connectivity (one nation per call) ----------------
+  War.pocketCursor = 1;
+  War.tickPockets = function () {
+    const S = G.S;
+    const nn = S.nations.length;
+    for (let tries = 0; tries < nn; tries++) {
+      War.pocketCursor = War.pocketCursor % (nn - 1) + 1;
+      const n = S.nations[War.pocketCursor];
+      if (n && n.alive && n.spawned && n.tiles > 0) { War.analyzePockets(n); return; }
+    }
+  };
+
+  const visit = { arr: null, gen: 0 };
+  War.analyzePockets = function (n) {
+    const S = G.S, owner = S.owner, w = World.W, N = World.N;
+    if (!visit.arr) visit.arr = new Uint32Array(N);
+    const id = n.id;
+    const comps = [];
+    const stack = [];
+    const g = ++visit.gen; // one generation per pass: every tile of this nation visited once
+    for (const start of n.border) {
+      if (visit.arr[start] === g) continue;
+      stack.length = 0; stack.push(start); visit.arr[start] = g;
+      let size = 0, hasCap = false, open = false;
+      const nb = new Map();
+      const tiles = [];
+      while (stack.length) {
+        const t = stack.pop(); size++; tiles.push(t);
+        if (t === n.capital) hasCap = true;
+        const x = t % w;
+        const ns = [x > 0 ? t - 1 : -1, x < w - 1 ? t + 1 : -1, t - w, t + w];
+        for (const u of ns) {
+          if (u < 0 || u >= N) continue;
+          const o = owner[u];
+          if (o === id) { if (visit.arr[u] !== g) { visit.arr[u] = g; stack.push(u); } }
+          else if (!World.land[u] || o === 0) open = true;
+          else nb.set(o, (nb.get(o) || 0) + 1);
+        }
+      }
+      comps.push({ size, hasCap, open, nb, tiles });
+    }
+    // re-mark nothing else; compute supply connectivity
+    let connected = 0;
+    for (const c of comps) if (c.hasCap) connected += c.size;
+    n.supplyGrowth = 0.5 + 0.5 * (connected / Math.max(1, n.tiles));
+    // annex enclosed pockets
+    for (const c of comps) {
+      if (c.hasCap || c.open || c.size > n.tiles * 0.3) continue;
+      let best = 0, bc = 0;
+      for (const [o, cnt] of c.nb) if (cnt > bc && G.canAttack(o, id)) { bc = cnt; best = o; }
+      if (!best) continue;
+      for (const t of c.tiles) G.setOwner(t, best, C.DUG_IN_SECONDS);
+      // pocketed troops are lost
+      n.troops *= 1 - Math.min(0.5, c.size / Math.max(1, n.tiles + c.size));
+      if (n.isPlayer) MP.Game.notify('pocket.cut', {});
+      if (n.tiles <= 0) { G.eliminate(id, best); return; }
+    }
+    if (n.isPlayer && connected < n.tiles * 0.85) MP.Game.notify('supply.overextended', {});
+  };
+
+  // ---------------- elimination sweep ----------------
+  War.tickElim = function () {
+    const S = G.S;
+    for (const n of S.nations) {
+      if (!n || !n.alive || !n.spawned) continue;
+      if (n.tiles <= 0 || (n.capital < 0 && n.tiles < 40)) G.eliminate(n.id, n.lastHitBy || 0);
+    }
+  };
+})();
