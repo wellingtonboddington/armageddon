@@ -414,9 +414,9 @@
       'Back in the room. Same clock, same enemies.',
     ]),
     'game.speed': D(0, 2, [
-      'Tempo {speed}.',
-      'Speed {speed}. Keep up.',
-      'Clock rate {speed}. The world runs to match.',
+      'Now running at {speed}.',
+      'Set to {speed}. Keep up.',
+      'Tempo changed: {speed}. The world runs to match.',
       'Tempo adjusted.',
     ], { rep: true }),
 
@@ -887,17 +887,21 @@
     if (typeof v === 'number') {
       if (!isFinite(v)) return null;
       if (name === 'eta') { const s = Math.max(1, Math.round(v)); return speech ? s + (s === 1 ? ' second' : ' seconds') : s + 's'; }
-      if (name === 'speed') { const s = String(Math.round(v * 100) / 100); return speech ? s + ' times' : s + '×'; }
+      if (name === 'speed') {
+        const s = String(Math.round(v * 100) / 100);
+        if (!speech) return s + '×';
+        return ({ 0.25: 'quarter speed', 0.5: 'half speed', 1: 'normal speed', 2: 'double speed', 3: 'triple speed' })[s] || (s + ' times speed');
+      }
       if (name === 'level' || name === 'count') return String(Math.round(v));
       return fmtNum(v, speech);
     }
     const s = String(v).replace(/\s+/g, ' ').trim().slice(0, 80);
     return s || null;
   }
-  function missingCount(tpl, params) {
-    let n = 0;
-    tpl.replace(PH, function (m, k) { if (fmtParam(k, params[k], false) == null) n++; return m; });
-    return n;
+  function paramFit(tpl, params) { // -> [missing, used]
+    let miss = 0, used = 0;
+    tpl.replace(PH, function (m, k) { if (fmtParam(k, params[k], false) == null) miss++; else used++; return m; });
+    return [miss, used];
   }
   function tidy(s) {
     return s.replace(/\s+/g, ' ')
@@ -912,6 +916,7 @@
       .replace(/\s*[—–]\s*/g, ', ')
       .replace(/\bMIRV(s?)\b/g, 'merv$1')
       .replace(/\bVESPER\b/g, 'Vesper')
+      .replace(/(^|\s)'(\d\d)\b/g, function (m, a, yy) { return a + '20' + yy; })   // '29 -> 2029
       .replace(/×/g, ' times ')
       .replace(/\s+/g, ' ').trim();
   }
@@ -922,14 +927,15 @@
     return { text: f(false), speech: toSpeech(f(true)) };
   }
   // shuffle-bag variant picker: cycles through all variants before repeating, never repeats back-to-back,
-  // and only considers the variants missing the fewest {params} (ideally none).
+  // and only considers the variants missing the fewest {params}; param-free variants are fallbacks for when the
+  // host supplied nothing they could use.
   const bags = Object.create(null), lastIdx = Object.create(null);
   function pickVariant(key, v, params) {
-    let pool = [], best = 1e9;
-    for (let i = 0; i < v.length; i++) {
-      const n = missingCount(v[i], params);
-      if (n < best) { best = n; pool = [i]; } else if (n === best) pool.push(i);
-    }
+    let pool = [], best = 1e9, useful = false;
+    const fit = v.map(function (tpl) { return paramFit(tpl, params); });
+    for (let i = 0; i < v.length; i++) best = Math.min(best, fit[i][0]);
+    for (let i = 0; i < v.length; i++) if (fit[i][0] === best && fit[i][1] > 0) useful = true;
+    for (let i = 0; i < v.length; i++) if (fit[i][0] === best && (!useful || fit[i][1] > 0)) pool.push(i);
     for (let round = 0; round < 2; round++) {
       let bag = bags[key];
       if (!bag || !bag.length) {
@@ -1696,7 +1702,7 @@
     const bars = el('span', 'vsp-bars', head); for (let i = 0; i < 5; i++) el('i', '', bars);
     const spk = buildSpeaker(head);
     const bits = buildLineBits(body, 'vsp-line');
-    const hint = el('div', 'vsp-hint', body);
+    const hint = el('div', 'vsp-hint', body); hint.appendChild(document.createElement('span'));
     const sr = el('div', 'vsp-sr', root); sr.setAttribute('aria-live', 'polite'); sr.setAttribute('role', 'status');
     root.addEventListener('click', function () { if (cur && cur.state === 'typing' && cur.mode !== 'voice') { cur.pos = cur.len; renderTyped(cur, cur.len); } });
     return { host: host, root: root, cv: cv, css: 64, bits: bits, hint: hint, sr: sr, spk: spk };
@@ -1717,7 +1723,7 @@
     const blocks = el('span', 'vsp-blocks', nm); for (let i = 0; i < 6; i++) el('i', '', blocks);
     const spk = buildSpeaker(nm);
     const bits = buildLineBits(root, 'vsp-mline');
-    const hint = el('div', 'vsp-hint', root);
+    const hint = el('div', 'vsp-hint', root); hint.appendChild(document.createElement('span'));
     const sr = el('div', 'vsp-sr', root); sr.setAttribute('aria-live', 'polite'); sr.setAttribute('role', 'status');
     return { host: host, root: root, cv: cv, css: 256, bits: bits, hint: hint, sr: sr, spk: spk };
   }
@@ -1745,7 +1751,17 @@
     if (it) h = it.hint || hostHint || tagFor(it);
     else h = hostHint;
     if (it && it.count > 1) h = (h ? h + ' · ' : '') + '×' + it.count;
-    if (u.hintText !== h) { u.hintText = h; u.hint.textContent = h; }
+    if (u.hintText !== h) { u.hintText = h; u.hint.firstChild.textContent = h; fitHint(u); }
+  }
+  function fitHint(u) { // overflowing hints become a slow ping-pong ticker (one layout read per hint change)
+    const span = u.hint.firstChild;
+    u.hint.classList.remove('vsp-marq');
+    const over = span.offsetWidth - u.hint.clientWidth;
+    if (over > 2 && u.hint.clientWidth > 0) {
+      u.hint.style.setProperty('--vsp-mdx', -(over + 4) + 'px');
+      u.hint.style.setProperty('--vsp-mdur', Math.max(3, (over + 4) / 22 + 2.2).toFixed(2) + 's');
+      u.hint.classList.add('vsp-marq');
+    }
   }
   const classState = {};
   function applyClasses() {
@@ -1773,6 +1789,7 @@
       const px = Math.max(64, Math.round(css * dpr));
       if (u.cv.width !== px) { u.cv.width = u.cv.height = px; }
       u.frameKey = '';
+      if (u.hintText) fitHint(u);
     });
   }
 
@@ -1914,6 +1931,7 @@
       } else { greetAt = 0; chatterAt = 0; }
       eachUI(function (u) { u.frameKey = ''; if (u !== liveUI()) renderStill(u); });
       const u = liveUI();
+      if (u) u.hintText = null;
       if (u) { // carry the current line over so the live mount isn't blank
         if (cur && cur.state !== 'done' && allowedIn(cur, m)) { lineDOM(cur); renderTyped(cur, Math.floor(cur.pos)); }
         else { u.item = null; u.bits.typed.textContent = ''; u.bits.rest.textContent = ''; refreshHint(); }
@@ -1932,7 +1950,7 @@
       Q.length = 0; cur = null; gapUntil = 0; alertUntil = 0; glitchUntil = 0; hostHint = '';
       for (const k in lastFire) delete lastFire[k];
       for (const k in tutDone) delete tutDone[k];
-      eachUI(function (u) { u.item = null; u.bits.typed.textContent = ''; u.bits.rest.textContent = ''; u.sr.textContent = ''; u.hintText = null; u.hint.textContent = ''; });
+      eachUI(function (u) { u.item = null; u.bits.typed.textContent = ''; u.bits.rest.textContent = ''; u.sr.textContent = ''; u.hintText = ''; u.hint.firstChild.textContent = ''; u.hint.classList.remove('vsp-marq'); });
       setSpeaking(false); applyClasses();
     } catch (e) { warn(e); }
   }

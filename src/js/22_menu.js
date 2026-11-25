@@ -50,17 +50,18 @@
   Menu.rankName = (L) => { let r = RANKS[0][1]; for (const [lv, n] of RANKS) if (L >= lv) r = n; return r; };
 
   // ---------------- missions ----------------
+  const pl = (n, w) => `${n} ${w}${n === 1 ? '' : 'S'}`;
   const DAILY_POOL = [
-    { id: 'forts', text: (n) => `BUILD ${n} FORTS`, n: [2, 3, 4], reward: 60, stat: (s) => s.built.fort || 0 },
-    { id: 'silos', text: (n) => `BUILD ${n} SILOS`, n: [2, 3], reward: 60, stat: (s) => s.built.silo || 0 },
+    { id: 'forts', text: (n) => `BUILD ${pl(n, 'FORT')}`, n: [2, 3, 4], reward: 60, stat: (s) => s.built.fort || 0 },
+    { id: 'silos', text: (n) => `BUILD ${pl(n, 'SILO')}`, n: [2, 3], reward: 60, stat: (s) => s.built.silo || 0 },
     { id: 'hold', text: (n) => `END A MATCH HOLDING ${n}%`, n: [5, 10], reward: 100, stat: (s, S, alive) => alive ? s.finalPct : 0, single: true },
-    { id: 'capitals', text: (n) => `TAKE ${n} CAPITALS`, n: [1, 2, 3], reward: 80, stat: (s) => s.capitals },
-    { id: 'intercept', text: (n) => `INTERCEPT ${n} MISSILES`, n: [2, 4], reward: 80, stat: (s) => s.intercepted },
+    { id: 'capitals', text: (n) => `TAKE ${pl(n, 'CAPITAL')}`, n: [1, 2, 3], reward: 80, stat: (s) => s.capitals },
+    { id: 'intercept', text: (n) => `INTERCEPT ${pl(n, 'MISSILE')}`, n: [2, 4], reward: 80, stat: (s) => s.intercepted },
     { id: 'convoy', text: (n) => `EARN ${n}K FROM CONVOYS`, n: [20, 40], reward: 70, stat: (s) => Math.floor(s.convoyIncome / 1000) },
-    { id: 'ally', text: (n) => `SIGN ${n} ALLIANCES`, n: [1, 2], reward: 60, stat: (s) => s.alliances },
-    { id: 'sink', text: (n) => `SINK ${n} SHIPS`, n: [2, 4], reward: 70, stat: (s) => s.sunk },
-    { id: 'end', text: (n) => `END ${n} NATIONS`, n: [2, 3], reward: 90, stat: (s) => s.eliminated },
-    { id: 'factories', text: (n) => `BUILD ${n} FACTORIES`, n: [2, 3], reward: 60, stat: (s) => s.built.factory || 0 },
+    { id: 'ally', text: (n) => `SIGN ${pl(n, 'ALLIANCE')}`, n: [1, 2], reward: 60, stat: (s) => s.alliances },
+    { id: 'sink', text: (n) => `SINK ${pl(n, 'SHIP')}`, n: [2, 4], reward: 70, stat: (s) => s.sunk },
+    { id: 'end', text: (n) => `END ${pl(n, 'NATION')}`, n: [2, 3], reward: 90, stat: (s) => s.eliminated },
+    { id: 'factories', text: (n) => `BUILD ${n} ${n === 1 ? 'FACTORY' : 'FACTORIES'}`, n: [2, 3], reward: 60, stat: (s) => s.built.factory || 0 },
   ];
   const WEEKLY = [
     { id: 'w_play', text: 'PLAY 10 MATCHES', target: 10, reward: 400 },
@@ -641,7 +642,7 @@
     const sl = (key, label, def) => `<label>${label} <b>${Math.round(S.get(key, def) * 100)}</b><input type="range" min="0" max="1" step="0.05" value="${S.get(key, def)}" data-vol="${key}"></label>`;
     if (inMatch && MP.Game.running && !MP.Game.paused) { MP.Game.setPaused(true); Menu._resumeAfter = true; } else Menu._resumeAfter = false;
     modal(`<div class="mh"><span class="tag">SYSTEM</span><h2>SETTINGS</h2></div>
-      ${inMatch ? `<div class="row-btns"><button class="btn primary" data-a="resume">RESUME</button><button class="btn" data-a="save">SAVE MATCH</button><button class="btn danger" data-a="quit">SAVE & QUIT TO MENU</button></div>` : ''}
+      ${inMatch ? `<div class="row-btns"><button class="btn primary" data-a="resume">RESUME</button><button class="btn" data-a="save">SAVE MATCH</button><button class="btn" data-a="howto">HOW TO PLAY</button><button class="btn danger" data-a="quit">SAVE & QUIT TO MENU</button></div>` : ''}
       <div class="rules">
         ${sl('vol.master', 'MASTER', 0.8)}${sl('vol.sfx', 'EFFECTS', 0.8)}${sl('vol.voice', 'ADVISOR CUES', 0.9)}${sl('vol.music', 'MUSIC', 0.5)}${sl('vol.amb', 'AMBIENCE', 0.5)}
         <label class="ck"><input type="checkbox" id="st-mute" ${S.get('muted', false) ? 'checked' : ''}> MUTE ALL</label>
@@ -663,6 +664,7 @@
         const a = b.dataset.a;
         if (a === 'resume') { close(); }
         if (a === 'save') MP.Game.save(false);
+        if (a === 'howto') Menu.openHowTo();
         if (a === 'quit') { MP.Game.save(true).then(() => { close(); MP.Game.quitToMenu(); }); }
         if (a === 'reset') MP.HUD.confirm('Reset all progress?', 'Level, scrap, unlocks and records will be erased.', () => { localStorage.removeItem(PKEY); Menu.load(); close(); Menu.render(); });
       });

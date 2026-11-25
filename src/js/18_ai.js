@@ -219,7 +219,7 @@
       s += -G.rel(n.id, o) / 120;
       if (ai.grudge.has(o)) s += 0.6;
       if (e.wars.has(n.id)) s += 0.25;
-      if (e.isPlayer && S.t - (S.playStart || 0) < 180) s -= 0.6;   // let the player breathe early
+      if (e.isPlayer && S.t - (S.playStart || 0) < 240) s *= 0.35;  // let the player breathe early
       if (ai.unclaimed) s -= 0.5;                        // prefer free land while it lasts
       if (e.st.fort.length) s -= 0.15 * Math.min(3, e.st.fort.length);
       s *= Math.min(1, 0.3 + cnt / 30);
@@ -265,7 +265,7 @@
     const late = S.clock < 90;
     let target = 0, reason = '';
     if (ai.retaliate && S.nations[ai.retaliate] && S.nations[ai.retaliate].alive) { target = ai.retaliate; reason = 'retaliate'; }
-    else if (!late && S.t - ai.lastNuke > 45 / (pers.nuke * nukeMul) && S.rng() < 0.25 * pers.nuke * nukeMul) {
+    else if (!late && S.t - ai.lastNuke > 110 / (pers.nuke * nukeMul) && S.rng() < 0.07 * pers.nuke * nukeMul) {
       // strike a stronger enemy we're at war with, or a grudge
       let bs = 0;
       for (const o of n.wars) {
@@ -275,7 +275,7 @@
         if (e.isPlayer && S.t < 600) s -= 0.3;
         if (s > bs) { bs = s; target = o; }
       }
-      if (bs < 1.05) target = 0;
+      if (bs < 1.25) target = 0;
       reason = 'war';
     }
     if (!target) return;

@@ -467,6 +467,9 @@ body.watch .hud-bc .buildbar, body.watch .hud-bc .stats, body.watch #h-dock, bod
   color: var(--y3, #7a6410); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   transition: color .3s;
 }
+.vsp-hint > span { display: inline-block; white-space: nowrap; }
+.vsp-hint.vsp-marq { text-overflow: clip; }
+.vsp-hint.vsp-marq > span { animation: vsp-marq var(--vsp-mdur, 6s) ease-in-out infinite alternate; }
 .vsp-stale .vsp-line, .vsp-stale .vsp-mline { color: var(--dim, #8d8670); }
 
 /* ---------------------------------------------------------------- CRT overlay + alert tint */
@@ -506,7 +509,7 @@ body.watch .hud-bc .buildbar, body.watch .hud-bc .stats, body.watch #h-dock, bod
 .vsp-crit .vsp-caret::after { background: var(--red, #ff4433); }
 
 /* ---------------------------------------------------------------- main-menu presence */
-.vsp-menu { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; }
+.vsp-menu { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 9px 9px 0; text-align: center; }
 .vsp-frame {
   position: relative; width: 272px; height: 272px; padding: 7px;
   background: #050504; border: 1px solid var(--line, #3a3524);
@@ -572,6 +575,7 @@ body.watch .hud-bc .buildbar, body.watch .hud-bc .stats, body.watch #h-dock, bod
 @keyframes vsp-eq { 0% { transform: scaleY(.25); } 100% { transform: scaleY(1); } }
 @keyframes vsp-chase { 0% { opacity: 1; } 33% { opacity: .35; } 66% { opacity: .7; } }
 @keyframes vsp-flicker { 0% { opacity: 1; } 31% { opacity: .9; } 32% { opacity: 1; } 67% { opacity: .94; } 68% { opacity: 1; } 89% { opacity: .86; } 90% { opacity: 1; } }
+@keyframes vsp-marq { 0%, 16% { transform: translateX(0); } 84%, 100% { transform: translateX(var(--vsp-mdx, 0)); } }
 @keyframes vsp-roll { 0% { transform: translateY(-110%); } 100% { transform: translateY(290%); } }
 @keyframes vsp-redflash { 0% { opacity: .55; } 14% { opacity: 0; } 28% { opacity: .4; } 42% { opacity: .1; } 57% { opacity: .3; } 85% { opacity: 0; } }
 @keyframes vsp-jitter { 0% { transform: translate(2px, 0); } 14% { transform: translate(-3px, 1px); } 28% { transform: translate(1px, -1px); } 42% { transform: translate(-1px, 0); } 57% { transform: translate(2px, 1px); } 71% { transform: none; } }
@@ -579,6 +583,7 @@ body.watch .hud-bc .buildbar, body.watch .hud-bc .stats, body.watch #h-dock, bod
 @media (prefers-reduced-motion: reduce) {
   .vsp-scan, .vsp-scan::after, .vsp-glitch .vsp-cv, .vsp-glitch .vsp-tint, .vsp-talk .vsp-dot { animation: none; }
   .vsp-talk .vsp-bars i, .vsp-talk .vsp-blocks i { animation-duration: 1.6s; }
+  .vsp-hint.vsp-marq > span { animation-duration: 12s; }
 }
 
 </style>
@@ -706,9 +711,9 @@ rle:"vAMHDDUEFQQ8I/gBBwi6AQQKMIABBisErgEMBxIEBvwGAQEEDTUDFwQ6IvkBBgm6AQkEMeQCDgM
     START_YEAR: 2031,
 
     CLOCK_START: 12 * 60,      // obs 12:00 to midnight
-    CLOCK_DRIFT_PER_SEC: 0.1,  // passive drift
+    CLOCK_DRIFT_PER_SEC: 0.08, // passive drift
     CLOCK: { nationFell: 1.5, betrayal: 5, intercept: -3, laserPerMin: -1, councilBan: -20,
-             Tactical: 8, Hypersonic: 15, ICBM: 25, MIRV: 50, Orbital: 35, EMP: 4, Airstrike: 0 },
+             Tactical: 5, Hypersonic: 10, ICBM: 18, MIRV: 40, Orbital: 25, EMP: 3, Airstrike: 0 },
 
     START_TROOPS: 20000,
     START_CREDITS: 5000,
@@ -2320,9 +2325,9 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
       'Back in the room. Same clock, same enemies.',
     ]),
     'game.speed': D(0, 2, [
-      'Tempo {speed}.',
-      'Speed {speed}. Keep up.',
-      'Clock rate {speed}. The world runs to match.',
+      'Now running at {speed}.',
+      'Set to {speed}. Keep up.',
+      'Tempo changed: {speed}. The world runs to match.',
       'Tempo adjusted.',
     ], { rep: true }),
 
@@ -2793,17 +2798,21 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     if (typeof v === 'number') {
       if (!isFinite(v)) return null;
       if (name === 'eta') { const s = Math.max(1, Math.round(v)); return speech ? s + (s === 1 ? ' second' : ' seconds') : s + 's'; }
-      if (name === 'speed') { const s = String(Math.round(v * 100) / 100); return speech ? s + ' times' : s + '×'; }
+      if (name === 'speed') {
+        const s = String(Math.round(v * 100) / 100);
+        if (!speech) return s + '×';
+        return ({ 0.25: 'quarter speed', 0.5: 'half speed', 1: 'normal speed', 2: 'double speed', 3: 'triple speed' })[s] || (s + ' times speed');
+      }
       if (name === 'level' || name === 'count') return String(Math.round(v));
       return fmtNum(v, speech);
     }
     const s = String(v).replace(/\s+/g, ' ').trim().slice(0, 80);
     return s || null;
   }
-  function missingCount(tpl, params) {
-    let n = 0;
-    tpl.replace(PH, function (m, k) { if (fmtParam(k, params[k], false) == null) n++; return m; });
-    return n;
+  function paramFit(tpl, params) { // -> [missing, used]
+    let miss = 0, used = 0;
+    tpl.replace(PH, function (m, k) { if (fmtParam(k, params[k], false) == null) miss++; else used++; return m; });
+    return [miss, used];
   }
   function tidy(s) {
     return s.replace(/\s+/g, ' ')
@@ -2818,6 +2827,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
       .replace(/\s*[—–]\s*/g, ', ')
       .replace(/\bMIRV(s?)\b/g, 'merv$1')
       .replace(/\bVESPER\b/g, 'Vesper')
+      .replace(/(^|\s)'(\d\d)\b/g, function (m, a, yy) { return a + '20' + yy; })   // '29 -> 2029
       .replace(/×/g, ' times ')
       .replace(/\s+/g, ' ').trim();
   }
@@ -2828,14 +2838,15 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     return { text: f(false), speech: toSpeech(f(true)) };
   }
   // shuffle-bag variant picker: cycles through all variants before repeating, never repeats back-to-back,
-  // and only considers the variants missing the fewest {params} (ideally none).
+  // and only considers the variants missing the fewest {params}; param-free variants are fallbacks for when the
+  // host supplied nothing they could use.
   const bags = Object.create(null), lastIdx = Object.create(null);
   function pickVariant(key, v, params) {
-    let pool = [], best = 1e9;
-    for (let i = 0; i < v.length; i++) {
-      const n = missingCount(v[i], params);
-      if (n < best) { best = n; pool = [i]; } else if (n === best) pool.push(i);
-    }
+    let pool = [], best = 1e9, useful = false;
+    const fit = v.map(function (tpl) { return paramFit(tpl, params); });
+    for (let i = 0; i < v.length; i++) best = Math.min(best, fit[i][0]);
+    for (let i = 0; i < v.length; i++) if (fit[i][0] === best && fit[i][1] > 0) useful = true;
+    for (let i = 0; i < v.length; i++) if (fit[i][0] === best && (!useful || fit[i][1] > 0)) pool.push(i);
     for (let round = 0; round < 2; round++) {
       let bag = bags[key];
       if (!bag || !bag.length) {
@@ -3602,7 +3613,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     const bars = el('span', 'vsp-bars', head); for (let i = 0; i < 5; i++) el('i', '', bars);
     const spk = buildSpeaker(head);
     const bits = buildLineBits(body, 'vsp-line');
-    const hint = el('div', 'vsp-hint', body);
+    const hint = el('div', 'vsp-hint', body); hint.appendChild(document.createElement('span'));
     const sr = el('div', 'vsp-sr', root); sr.setAttribute('aria-live', 'polite'); sr.setAttribute('role', 'status');
     root.addEventListener('click', function () { if (cur && cur.state === 'typing' && cur.mode !== 'voice') { cur.pos = cur.len; renderTyped(cur, cur.len); } });
     return { host: host, root: root, cv: cv, css: 64, bits: bits, hint: hint, sr: sr, spk: spk };
@@ -3623,7 +3634,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     const blocks = el('span', 'vsp-blocks', nm); for (let i = 0; i < 6; i++) el('i', '', blocks);
     const spk = buildSpeaker(nm);
     const bits = buildLineBits(root, 'vsp-mline');
-    const hint = el('div', 'vsp-hint', root);
+    const hint = el('div', 'vsp-hint', root); hint.appendChild(document.createElement('span'));
     const sr = el('div', 'vsp-sr', root); sr.setAttribute('aria-live', 'polite'); sr.setAttribute('role', 'status');
     return { host: host, root: root, cv: cv, css: 256, bits: bits, hint: hint, sr: sr, spk: spk };
   }
@@ -3651,7 +3662,17 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     if (it) h = it.hint || hostHint || tagFor(it);
     else h = hostHint;
     if (it && it.count > 1) h = (h ? h + ' · ' : '') + '×' + it.count;
-    if (u.hintText !== h) { u.hintText = h; u.hint.textContent = h; }
+    if (u.hintText !== h) { u.hintText = h; u.hint.firstChild.textContent = h; fitHint(u); }
+  }
+  function fitHint(u) { // overflowing hints become a slow ping-pong ticker (one layout read per hint change)
+    const span = u.hint.firstChild;
+    u.hint.classList.remove('vsp-marq');
+    const over = span.offsetWidth - u.hint.clientWidth;
+    if (over > 2 && u.hint.clientWidth > 0) {
+      u.hint.style.setProperty('--vsp-mdx', -(over + 4) + 'px');
+      u.hint.style.setProperty('--vsp-mdur', Math.max(3, (over + 4) / 22 + 2.2).toFixed(2) + 's');
+      u.hint.classList.add('vsp-marq');
+    }
   }
   const classState = {};
   function applyClasses() {
@@ -3679,6 +3700,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
       const px = Math.max(64, Math.round(css * dpr));
       if (u.cv.width !== px) { u.cv.width = u.cv.height = px; }
       u.frameKey = '';
+      if (u.hintText) fitHint(u);
     });
   }
 
@@ -3820,6 +3842,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
       } else { greetAt = 0; chatterAt = 0; }
       eachUI(function (u) { u.frameKey = ''; if (u !== liveUI()) renderStill(u); });
       const u = liveUI();
+      if (u) u.hintText = null;
       if (u) { // carry the current line over so the live mount isn't blank
         if (cur && cur.state !== 'done' && allowedIn(cur, m)) { lineDOM(cur); renderTyped(cur, Math.floor(cur.pos)); }
         else { u.item = null; u.bits.typed.textContent = ''; u.bits.rest.textContent = ''; refreshHint(); }
@@ -3838,7 +3861,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
       Q.length = 0; cur = null; gapUntil = 0; alertUntil = 0; glitchUntil = 0; hostHint = '';
       for (const k in lastFire) delete lastFire[k];
       for (const k in tutDone) delete tutDone[k];
-      eachUI(function (u) { u.item = null; u.bits.typed.textContent = ''; u.bits.rest.textContent = ''; u.sr.textContent = ''; u.hintText = null; u.hint.textContent = ''; });
+      eachUI(function (u) { u.item = null; u.bits.typed.textContent = ''; u.bits.rest.textContent = ''; u.sr.textContent = ''; u.hintText = ''; u.hint.firstChild.textContent = ''; u.hint.classList.remove('vsp-marq'); });
       setSpeaking(false); applyClasses();
     } catch (e) { warn(e); }
   }
@@ -6653,7 +6676,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
       s += -G.rel(n.id, o) / 120;
       if (ai.grudge.has(o)) s += 0.6;
       if (e.wars.has(n.id)) s += 0.25;
-      if (e.isPlayer && S.t - (S.playStart || 0) < 180) s -= 0.6;   // let the player breathe early
+      if (e.isPlayer && S.t - (S.playStart || 0) < 240) s *= 0.35;  // let the player breathe early
       if (ai.unclaimed) s -= 0.5;                        // prefer free land while it lasts
       if (e.st.fort.length) s -= 0.15 * Math.min(3, e.st.fort.length);
       s *= Math.min(1, 0.3 + cnt / 30);
@@ -6699,7 +6722,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     const late = S.clock < 90;
     let target = 0, reason = '';
     if (ai.retaliate && S.nations[ai.retaliate] && S.nations[ai.retaliate].alive) { target = ai.retaliate; reason = 'retaliate'; }
-    else if (!late && S.t - ai.lastNuke > 45 / (pers.nuke * nukeMul) && S.rng() < 0.25 * pers.nuke * nukeMul) {
+    else if (!late && S.t - ai.lastNuke > 110 / (pers.nuke * nukeMul) && S.rng() < 0.07 * pers.nuke * nukeMul) {
       // strike a stronger enemy we're at war with, or a grudge
       let bs = 0;
       for (const o of n.wars) {
@@ -6709,7 +6732,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
         if (e.isPlayer && S.t < 600) s -= 0.3;
         if (s > bs) { bs = s; target = o; }
       }
-      if (bs < 1.05) target = 0;
+      if (bs < 1.25) target = 0;
       reason = 'war';
     }
     if (!target) return;
@@ -9025,17 +9048,18 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
   Menu.rankName = (L) => { let r = RANKS[0][1]; for (const [lv, n] of RANKS) if (L >= lv) r = n; return r; };
 
   // ---------------- missions ----------------
+  const pl = (n, w) => `${n} ${w}${n === 1 ? '' : 'S'}`;
   const DAILY_POOL = [
-    { id: 'forts', text: (n) => `BUILD ${n} FORTS`, n: [2, 3, 4], reward: 60, stat: (s) => s.built.fort || 0 },
-    { id: 'silos', text: (n) => `BUILD ${n} SILOS`, n: [2, 3], reward: 60, stat: (s) => s.built.silo || 0 },
+    { id: 'forts', text: (n) => `BUILD ${pl(n, 'FORT')}`, n: [2, 3, 4], reward: 60, stat: (s) => s.built.fort || 0 },
+    { id: 'silos', text: (n) => `BUILD ${pl(n, 'SILO')}`, n: [2, 3], reward: 60, stat: (s) => s.built.silo || 0 },
     { id: 'hold', text: (n) => `END A MATCH HOLDING ${n}%`, n: [5, 10], reward: 100, stat: (s, S, alive) => alive ? s.finalPct : 0, single: true },
-    { id: 'capitals', text: (n) => `TAKE ${n} CAPITALS`, n: [1, 2, 3], reward: 80, stat: (s) => s.capitals },
-    { id: 'intercept', text: (n) => `INTERCEPT ${n} MISSILES`, n: [2, 4], reward: 80, stat: (s) => s.intercepted },
+    { id: 'capitals', text: (n) => `TAKE ${pl(n, 'CAPITAL')}`, n: [1, 2, 3], reward: 80, stat: (s) => s.capitals },
+    { id: 'intercept', text: (n) => `INTERCEPT ${pl(n, 'MISSILE')}`, n: [2, 4], reward: 80, stat: (s) => s.intercepted },
     { id: 'convoy', text: (n) => `EARN ${n}K FROM CONVOYS`, n: [20, 40], reward: 70, stat: (s) => Math.floor(s.convoyIncome / 1000) },
-    { id: 'ally', text: (n) => `SIGN ${n} ALLIANCES`, n: [1, 2], reward: 60, stat: (s) => s.alliances },
-    { id: 'sink', text: (n) => `SINK ${n} SHIPS`, n: [2, 4], reward: 70, stat: (s) => s.sunk },
-    { id: 'end', text: (n) => `END ${n} NATIONS`, n: [2, 3], reward: 90, stat: (s) => s.eliminated },
-    { id: 'factories', text: (n) => `BUILD ${n} FACTORIES`, n: [2, 3], reward: 60, stat: (s) => s.built.factory || 0 },
+    { id: 'ally', text: (n) => `SIGN ${pl(n, 'ALLIANCE')}`, n: [1, 2], reward: 60, stat: (s) => s.alliances },
+    { id: 'sink', text: (n) => `SINK ${pl(n, 'SHIP')}`, n: [2, 4], reward: 70, stat: (s) => s.sunk },
+    { id: 'end', text: (n) => `END ${pl(n, 'NATION')}`, n: [2, 3], reward: 90, stat: (s) => s.eliminated },
+    { id: 'factories', text: (n) => `BUILD ${n} ${n === 1 ? 'FACTORY' : 'FACTORIES'}`, n: [2, 3], reward: 60, stat: (s) => s.built.factory || 0 },
   ];
   const WEEKLY = [
     { id: 'w_play', text: 'PLAY 10 MATCHES', target: 10, reward: 400 },
@@ -9616,7 +9640,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     const sl = (key, label, def) => `<label>${label} <b>${Math.round(S.get(key, def) * 100)}</b><input type="range" min="0" max="1" step="0.05" value="${S.get(key, def)}" data-vol="${key}"></label>`;
     if (inMatch && MP.Game.running && !MP.Game.paused) { MP.Game.setPaused(true); Menu._resumeAfter = true; } else Menu._resumeAfter = false;
     modal(`<div class="mh"><span class="tag">SYSTEM</span><h2>SETTINGS</h2></div>
-      ${inMatch ? `<div class="row-btns"><button class="btn primary" data-a="resume">RESUME</button><button class="btn" data-a="save">SAVE MATCH</button><button class="btn danger" data-a="quit">SAVE & QUIT TO MENU</button></div>` : ''}
+      ${inMatch ? `<div class="row-btns"><button class="btn primary" data-a="resume">RESUME</button><button class="btn" data-a="save">SAVE MATCH</button><button class="btn" data-a="howto">HOW TO PLAY</button><button class="btn danger" data-a="quit">SAVE & QUIT TO MENU</button></div>` : ''}
       <div class="rules">
         ${sl('vol.master', 'MASTER', 0.8)}${sl('vol.sfx', 'EFFECTS', 0.8)}${sl('vol.voice', 'ADVISOR CUES', 0.9)}${sl('vol.music', 'MUSIC', 0.5)}${sl('vol.amb', 'AMBIENCE', 0.5)}
         <label class="ck"><input type="checkbox" id="st-mute" ${S.get('muted', false) ? 'checked' : ''}> MUTE ALL</label>
@@ -9638,6 +9662,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
         const a = b.dataset.a;
         if (a === 'resume') { close(); }
         if (a === 'save') MP.Game.save(false);
+        if (a === 'howto') Menu.openHowTo();
         if (a === 'quit') { MP.Game.save(true).then(() => { close(); MP.Game.quitToMenu(); }); }
         if (a === 'reset') MP.HUD.confirm('Reset all progress?', 'Level, scrap, unlocks and records will be erased.', () => { localStorage.removeItem(PKEY); Menu.load(); close(); Menu.render(); });
       });

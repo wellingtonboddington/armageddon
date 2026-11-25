@@ -13,9 +13,9 @@
     START_YEAR: 2031,
 
     CLOCK_START: 12 * 60,      // obs 12:00 to midnight
-    CLOCK_DRIFT_PER_SEC: 0.1,  // passive drift
+    CLOCK_DRIFT_PER_SEC: 0.08, // passive drift
     CLOCK: { nationFell: 1.5, betrayal: 5, intercept: -3, laserPerMin: -1, councilBan: -20,
-             Tactical: 8, Hypersonic: 15, ICBM: 25, MIRV: 50, Orbital: 35, EMP: 4, Airstrike: 0 },
+             Tactical: 5, Hypersonic: 10, ICBM: 18, MIRV: 40, Orbital: 25, EMP: 3, Airstrike: 0 },
 
     START_TROOPS: 20000,
     START_CREDITS: 5000,

@@ -95,6 +95,9 @@
   color: var(--y3, #7a6410); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   transition: color .3s;
 }
+.vsp-hint > span { display: inline-block; white-space: nowrap; }
+.vsp-hint.vsp-marq { text-overflow: clip; }
+.vsp-hint.vsp-marq > span { animation: vsp-marq var(--vsp-mdur, 6s) ease-in-out infinite alternate; }
 .vsp-stale .vsp-line, .vsp-stale .vsp-mline { color: var(--dim, #8d8670); }
 
 /* ---------------------------------------------------------------- CRT overlay + alert tint */
@@ -134,7 +137,7 @@
 .vsp-crit .vsp-caret::after { background: var(--red, #ff4433); }
 
 /* ---------------------------------------------------------------- main-menu presence */
-.vsp-menu { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; }
+.vsp-menu { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 9px 9px 0; text-align: center; }
 .vsp-frame {
   position: relative; width: 272px; height: 272px; padding: 7px;
   background: #050504; border: 1px solid var(--line, #3a3524);
@@ -200,6 +203,7 @@
 @keyframes vsp-eq { 0% { transform: scaleY(.25); } 100% { transform: scaleY(1); } }
 @keyframes vsp-chase { 0% { opacity: 1; } 33% { opacity: .35; } 66% { opacity: .7; } }
 @keyframes vsp-flicker { 0% { opacity: 1; } 31% { opacity: .9; } 32% { opacity: 1; } 67% { opacity: .94; } 68% { opacity: 1; } 89% { opacity: .86; } 90% { opacity: 1; } }
+@keyframes vsp-marq { 0%, 16% { transform: translateX(0); } 84%, 100% { transform: translateX(var(--vsp-mdx, 0)); } }
 @keyframes vsp-roll { 0% { transform: translateY(-110%); } 100% { transform: translateY(290%); } }
 @keyframes vsp-redflash { 0% { opacity: .55; } 14% { opacity: 0; } 28% { opacity: .4; } 42% { opacity: .1; } 57% { opacity: .3; } 85% { opacity: 0; } }
 @keyframes vsp-jitter { 0% { transform: translate(2px, 0); } 14% { transform: translate(-3px, 1px); } 28% { transform: translate(1px, -1px); } 42% { transform: translate(-1px, 0); } 57% { transform: translate(2px, 1px); } 71% { transform: none; } }
@@ -207,4 +211,5 @@
 @media (prefers-reduced-motion: reduce) {
   .vsp-scan, .vsp-scan::after, .vsp-glitch .vsp-cv, .vsp-glitch .vsp-tint, .vsp-talk .vsp-dot { animation: none; }
   .vsp-talk .vsp-bars i, .vsp-talk .vsp-blocks i { animation-duration: 1.6s; }
+  .vsp-hint.vsp-marq > span { animation-duration: 12s; }
 }
