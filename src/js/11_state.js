@@ -117,7 +117,9 @@
     return until != null && until > S.t;
   };
   G.protectedNow = () => { const S = G.S; return !S || S.phase !== 'play' || S.t - S.playStart < C.PROTECT_SECONDS; };
-  G.canAttack = (a, b) => b === 0 || (!G.protectedNow() && !G.isAllied(a, b) && !G.hasTruce(a, b));
+  G.isAlienPair = (a, b) => { const S = G.S; return !!((S.nations[a] && S.nations[a].isAlien) || (S.nations[b] && S.nations[b].isAlien)); };
+  // spawn protection never shields anyone from (or from fighting) the aliens
+  G.canAttack = (a, b) => b === 0 || ((!G.protectedNow() || G.isAlienPair(a, b)) && !G.isAllied(a, b) && !G.hasTruce(a, b));
   G.embargoed = function (a, b) { // trade blocked between a and b
     const S = G.S, na = S.nations[a], nb = S.nations[b];
     if (!na || !nb) return false;
@@ -339,7 +341,7 @@
       if (t >= 0) G.setCapital(v, t);
     }
     // a captured capital brings the whole nation down — except Scorched Earth, whose pockets fight on
-    if (a && !G.has(v, 'scorched')) G.S.capFalls.push({ v: vid, by: by });
+    if (a && !G.has(v, 'scorched') && !v.isAlien) G.S.capFalls.push({ v: vid, by: by }); // the armada's mothership simply relocates
   };
   G.resolveCapFalls = function () {
     const S = G.S;

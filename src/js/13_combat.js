@@ -194,6 +194,8 @@
       cost *= G.mod(d, 'defendCost');
       const ff = fortFactor(at.to, x, y, at.from);
       if (ff) { cost *= C.FORT_COST_MULT * (ff > 1 ? 1.5 : 1); slow *= C.FORT_SLOW * (ff > 1 ? 1.3 : 1); }
+      // capital garrison: the ground around a capital is the hardest in the nation
+      if (d.capital >= 0) { const gx = x - d.capX, gy = y - d.capY; if (gx * gx + gy * gy <= C.CAPITAL_GUARD_R * C.CAPITAL_GUARD_R) { cost *= C.CAPITAL_GUARD_COST; slow *= C.CAPITAL_GUARD_SLOW; } }
       // Homeland reclaiming its own soil: 25% cheaper, 3× faster
       if (G.has(a, 'homeland') && S.home[t] === at.from) { cost *= 0.75; slow /= 3; }
       // Scorched Earth retaking burnt land it once held: half price

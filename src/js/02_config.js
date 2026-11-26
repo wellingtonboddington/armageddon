@@ -36,6 +36,7 @@
     DUG_IN_SECONDS: 45,        // fresh (striped) land hardens after this
     DUG_IN_MULT: 2,            // obs ×2
     FORT_COST_MULT: 5, FORT_SLOW: 3, FORT_RADIUS: 50, // designer
+    CAPITAL_GUARD_R: 10, CAPITAL_GUARD_COST: 3, CAPITAL_GUARD_SLOW: 2, // capital garrison zone: beheading a nation takes real force
     SUPPLY_FREE: 120, SUPPLY_SPAN: 300, SUPPLY_MAX_PENALTY: 0.6,
 
     TERRAIN_COST: [2, 3, 3, 3],          // biome: plains, forest, desert, tundra (troops/tile, unclaimed)

@@ -109,7 +109,7 @@
     const target = S.owner[t];
     if (target) MP.War.declareWar(n.id, target);
     if (def.from === 'orbit') {
-      n.orbitalReady = S.t + def.cooldown;
+      n.orbitalReady = S.t + def.cooldown * G.mod(n, 'orbitalCd');
       const m = { id: mid++, w, owner: n.id, x0: x, y0: y - 60, x1: x, y1: y, t: 0, T: def.charge, target, orbital: true, style: n.missileStyle || 'standard', det: n.detonation };
       S.missiles.push(m);
       Wp.detect(m);
@@ -380,7 +380,7 @@
       const p = G.player();
       if (p && p.alive && Wp.inFalloutOf(p.id, cx, cy, R * 1.25)) MP.Game.notify('fallout.us', {});
     }
-    S.clock -= (C.CLOCK[m.w] || 0) / (m.warhead ? C.WEAPON.MIRV.warheads : 1);
+    S.clock -= (C.CLOCK[m.w] || 0) / (m.warhead ? C.WEAPON.MIRV.warheads : 1) * (owner && owner.isAlien ? 0.15 : 1); // alien fire is not human escalation
     MP.FX && MP.FX.detonation(cx, cy, R, m.w, m.det);
     const p = G.player();
     const near = p && p.alive && (hitN.has(p.id) || m.owner === p.id);

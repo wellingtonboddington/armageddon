@@ -711,6 +711,17 @@
       // defenders show a number only once they commit troops — strictly inside the defender's land
       if (dn && at.def > 0) placeNumber(g, -1, at.to, U.fmtInt(at.def), fs * 0.92, mine ? '#ffc2b8' : '#ffffff', U.rgb(dn.color));
     }
+    // alien landfall marker
+    if (S.alienId && S.alienRevealed && !S.alienLanded) {
+      const ax = S.alienSite % World.W, ay = (S.alienSite / World.W) | 0;
+      const [sx, sy] = R.w2s(ax, ay);
+      const r = 34 * cam.z, k = 0.5 + 0.5 * Math.sin(timeNow * 6);
+      ctx.save(); ctx.strokeStyle = `rgba(125,255,90,${0.5 + 0.4 * k})`; ctx.lineWidth = 2.5; ctx.setLineDash([10, 6]); ctx.lineDashOffset = -timeNow * 30;
+      ctx.beginPath(); ctx.arc(sx, sy, r, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(sx - r * 0.3, sy); ctx.lineTo(sx + r * 0.3, sy); ctx.moveTo(sx, sy - r * 0.3); ctx.lineTo(sx, sy + r * 0.3); ctx.stroke();
+      ctx.font = `800 14px ${MP.FONT_HEAD}`; ctx.textAlign = 'center'; ctx.fillStyle = '#7dff5a'; ctx.fillText('PROJECTED LANDFALL · ' + Math.max(0, Math.ceil(S.alienLeft || 0)) + 's', sx, sy - r - 8);
+      ctx.restore();
+    }
     // breakout zones (Call for the Motherland)
     if (S.tempForts) for (const tf of S.tempForts) {
       if (!onScreen(tf.x, tf.y, tf.r * cam.z + 20)) continue;

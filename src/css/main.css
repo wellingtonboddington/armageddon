@@ -384,3 +384,22 @@ body.watch .hud-bc .buildbar, body.watch .hud-bc .stats, body.watch #h-dock, bod
 .vstat { grid-column: 1 / -1; font-size: 10.5px; color: var(--dim); letter-spacing: .05em; }
 .vstat b { color: var(--text); }
 .modal { width: min(980px, 96vw); }
+
+/* operations: country picker */
+.ctry-list { max-height: 260px; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 4px; padding-right: 4px; }
+.ctry { display: grid; grid-template-columns: 26px 1fr; grid-template-rows: auto auto; column-gap: 8px; align-items: center; text-align: left; background: #15130d; border: 1px solid var(--line2); padding: 6px 8px; cursor: pointer; }
+.ctry img, .ctry .cf { grid-row: span 2; }
+.ctry .cf { color: var(--y); font-size: 18px; text-align: center; }
+.ctry b { font: 800 12px var(--head); letter-spacing: .05em; }
+.ctry i { font-style: normal; font-size: 9.5px; color: var(--dim); }
+.ctry.on { border-color: var(--y); background: #2a240c; box-shadow: 0 0 0 1px var(--y); }
+.ctry:hover { border-color: var(--y); }
+.op-party select { background: #0d0c08; color: var(--text); border: 1px solid var(--line2); font: inherit; font-size: 10px; padding: 4px; max-width: 200px; }
+.m-row.alien { border-color: rgba(125, 255, 90, .35); }
+.m-row.alien b { color: #b8ff9a; }
+
+/* compact operations list so the whole menu fits shorter screens */
+.m-main { max-height: calc(100vh - 440px); min-height: 220px; overflow-y: auto; }
+.m-main .m-row { padding: 6px 10px; }
+.m-main .m-row .mr-t b { font-size: 15px; }
+@media (max-height: 900px) { #m-adv-slot { min-height: 0; } #advisor-menu canvas { max-height: 200px; } .m-title { font-size: 30px; margin: 4px 0 0; } }

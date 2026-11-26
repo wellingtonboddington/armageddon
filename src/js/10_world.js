@@ -255,6 +255,21 @@
     World.buildNav();
   };
 
+  // real-world country raster for PRE-SET COUNTRIES (decoded on first use)
+  World.countries = function () {
+    if (World._countries) return World._countries;
+    const CD = MP.COUNTRIES;
+    if (!CD) return null;
+    const cid = U.rleDecode(CD.rle, World.N);
+    const list = CD.list.map((c) => Object.assign({}, c, { flag: c.a2 && MP.Flags.byCode[c.a2] ? 'cc:' + c.a2 : null }));
+    World._countries = { cid, list, byIdx: new Map(list.map((c) => [c.i, c])) };
+    return World._countries;
+  };
+  World.playableCountries = function () {
+    const c = World.countries();
+    return c ? c.list.filter((x) => x.tiles >= 12).sort((a, b) => b.tiles - a.tiles) : [];
+  };
+
   World.nearestLand = function (x, y, r) {
     const W = World.W, H = World.H;
     let best = -1, bd = 1e9;

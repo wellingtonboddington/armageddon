@@ -91,6 +91,7 @@
     const pers = C.PERSONALITIES[n.personality] || C.PERSONALITIES.opportunist;
     const fill = n.troops / Math.max(1, n.cap);
 
+    if (n.isAlien) { AI.alien(n); return; }
     // a puppet-state never outgrows its master
     const master = n.puppet ? G.player() : null;
     const capped = !!(master && master.alive && n.tiles >= master.tiles * 0.9);
@@ -136,7 +137,7 @@
     AI.strike(n, pers);
 
     // ---------------- diplomacy ----------------
-    if (S.t - ai.lastDiplo > 20) { ai.lastDiplo = S.t + S.rng() * 15; AI.diplomacy(n, pers); }
+    if (!n.isAlien && S.t - ai.lastDiplo > 20) { ai.lastDiplo = S.t + S.rng() * 15; AI.diplomacy(n, pers); }
   };
 
   AI.build = function (n, pers, fill) {
@@ -229,6 +230,8 @@
       s *= 0.6 + pers.aggro;
       s += -G.rel(n.id, o) / 120;
       if (ai.grudge.has(o)) s += 0.6;
+      // not every nation is interested in fighting the aliens
+      if (e.isAlien) s += (pers.aggro > 0.7 ? 0.3 : -0.7) + (n.tiles > e.tiles * 0.8 ? 0.25 : -0.35);
       if (e.wars.has(n.id)) s += 0.25;
       if (e.isPlayer && S.t - (S.playStart || 0) < 240) s *= 0.35;  // let the player breathe early
       if (ai.unclaimed) s -= 0.5;                        // prefer free land while it lasts
@@ -261,9 +264,49 @@
     MP.Naval.launchTransport(n, best, n.troops * 0.3);
   };
 
+  // the Void Armada: relentless expansion, constant pressure, orbital fire from day one
+  AI.alien = function (n) {
+    const S = G.S, ai = n.ai;
+    if (S.t >= ai.scanT) scan(n);
+    const fill = n.troops / Math.max(1, n.cap);
+    const mine = S.attacks.filter((a) => a.from === n.id && !a.done);
+    if (ai.unclaimed && fill > 0.12 && !mine.some((a) => a.to === 0)) MP.War.launch(n.id, 0, n.troops * 0.3);
+    if (S.t - ai.lastAttack > 4 && (fill > 0.2 || n.troops > 60000)) {
+      let best = null, bs = -1e9;
+      for (const [o, cnt] of ai.neighbors) {
+        const e = S.nations[o];
+        if (!e || !e.alive || !G.canAttack(n.id, o)) continue;
+        const sc = cnt / 20 - MP.Diplo.strength(e) / Math.max(1, MP.Diplo.strength(n)) * 2 + S.rng();
+        if (sc > bs) { bs = sc; best = e; }
+      }
+      if (best) { const aim = AI.attackAim(n, best); MP.War.launch(n.id, best.id, n.troops * 0.25, aim ? { fx: aim[0], fy: aim[1] } : null); ai.lastAttack = S.t; }
+      else if (S.t - ai.lastBoat > 15) {
+        // nothing left to reach on land: cross the sea toward the nearest nation
+        const cx = n.sx / Math.max(1, n.tiles), cy = n.sy / Math.max(1, n.tiles);
+        const near = G.alive().filter((e) => e.id !== n.id && e.tiles > 20).sort((a, b) => U.dist2(a.capX, a.capY, cx, cy) - U.dist2(b.capX, b.capY, cx, cy))[S.rng.int(3)];
+        if (near) AI.boatAttackOn(n, near); else AI.boatAttack(n);
+      }
+    }
+    // build up the base at hyper speed
+    if (S.t - ai.lastBuild > 1.5) {
+      const order = ['city', 'factory', 'silo', 'laser', 'sam', 'abm', 'aegis', 'radar', 'fort', 'port'];
+      const type = order[S.rng.int(order.length)];
+      for (let k = 0; k < 4; k++) if (tryBuild(n, type, randomOwnTile(n, type === 'fort'))) { ai.lastBuild = S.t; break; }
+    }
+    // orbital fire and missiles at the strongest nation in reach
+    if (S.t - ai.lastNuke > 12) {
+      const targets = G.alive().filter((e) => e.id !== n.id && e.tiles > 30).sort((a, b) => MP.Diplo.strength(b) - MP.Diplo.strength(a));
+      const e = ai.neighbors.size && S.rng() < 0.6 ? S.nations[Array.from(ai.neighbors.keys())[S.rng.int(ai.neighbors.size)]] : targets[S.rng.int(Math.min(6, targets.length))];
+      if (e && e.alive) {
+        const aim = AI.aimPoint(n, e);
+        if (aim) for (const w of ['Orbital', 'ICBM', 'Hypersonic', 'Tactical']) { if (MP.Weapons.canLaunch(n, w, aim[0], aim[1]).ok) { MP.Weapons.launch(n, w, aim[0], aim[1]); ai.lastNuke = S.t; break; } }
+      }
+    }
+  };
+
   AI.attackAim = function (n, e) {
     const S = G.S;
-    if (S.rng() < 0.5 && e.capital >= 0) return [e.capX, e.capY];
+    if (S.rng() < 0.3 && e.capital >= 0) return [e.capX, e.capY];
     const arr = e.st.city.length ? e.st.city : null;
     if (arr) { const c = arr[S.rng.int(arr.length)]; return [c.x, c.y]; }
     return e.capital >= 0 ? [e.capX, e.capY] : null;
@@ -368,7 +411,7 @@
     if (MP.Diplo.allianceCount(n) < 3 && S.rng() < 0.35 * pers.ally && S.opts.mode !== 'teams') {
       const al = G.alive();
       const cand = al[S.rng.int(al.length)];
-      if (cand && cand.id !== n.id && !G.isAllied(n.id, cand.id) && !cand.isPlayer && cand.ai && !n.partner && !cand.partner) {
+      if (cand && cand.id !== n.id && !G.isAllied(n.id, cand.id) && !cand.isPlayer && cand.ai && !cand.isAlien && !n.partner && !cand.partner) {
         if (MP.Diplo.allianceCount(cand) < 4 && S.rng() < MP.Diplo.allianceOdds(n, cand) * 0.6) MP.Diplo.formAlliance(n, cand);
       }
     }

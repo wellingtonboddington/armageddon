@@ -34,6 +34,9 @@
     const L = leaderInfo();
     if (L.first && L.first.id === a.id && L.second && a.tiles > L.second.tiles * 2) s -= 0.4; // fear of the runaway leader
     let common = 0; for (const e of a.wars) if (b.wars.has(e)) common++;
+    // a shared border with the aliens makes strange bedfellows — for some
+    const S2 = G.S;
+    if (S2.alienId && S2.alienLanded && b.ai && MP.War.bordersWith(b.id, S2.alienId) && (MP.War.bordersWith(a.id, S2.alienId) || strength(a) > strength(b))) s += 0.25;
     s += Math.min(0.45, common * 0.15);
     if (a.traitorUntil > S.t) s -= 0.55;
     s -= D.allianceCount(b) * 0.08;
@@ -212,6 +215,7 @@
   D.pending = [];
   D.requestAlliance = function (p, b) {
     const S = G.S;
+    if (b.isAlien) { MP.Game.toast('The Void Armada does not negotiate', 'bad'); MP.SFX.play('decline'); return; }
     if (S.opts.party && S.opts.party.length) { MP.Game.notify('diplo.party_no_alliance', {}); MP.Game.toast('Your party forfeits alliances', 'bad'); return; }
     if (S.opts.mode === 'teams') { MP.Game.toast('Teams are fixed in this mode', 'bad'); return; }
     if (D.allianceCount(p) >= C.ALLIANCE_MAX) { MP.Game.notify('diplo.alliance_cap', {}); MP.Game.toast('Alliance limit reached (' + C.ALLIANCE_MAX + ')', 'bad'); return; }
@@ -222,6 +226,7 @@
   };
   D.requestTruce = function (p, b) {
     const S = G.S;
+    if (b.isAlien) { MP.Game.toast('The Void Armada does not negotiate', 'bad'); MP.SFX.play('decline'); return; }
     if (D.pending.some((x) => x.to === b.id && x.kind === 'truce')) return;
     D.pending.push({ kind: 'truce', from: p.id, to: b.id, at: S.t + 1 + S.rng() * 3 });
     MP.Game.toast(`Truce proposed to ${b.name}`, 'info');
@@ -346,7 +351,7 @@
     const S = G.S;
     const L = leaderInfo();
     for (const a of S.nations) {
-      if (!a || !a.alive || !a.ai || a.partner) continue;
+      if (!a || !a.alive || !a.ai || a.partner || a.isAlien) continue;
       for (const bid of Array.from(a.allies)) {
         const b = S.nations[bid];
         if (!b || !b.alive) { a.allies.delete(bid); continue; }
@@ -422,7 +427,7 @@
     MP.Game.tut('tut.council');
     MP.SFX.play('council');
     // bots vote immediately (hidden until close)
-    for (const n of G.alive()) if (n.ai) res.votes[n.id] = D.botVote(n, res, L);
+    for (const n of G.alive()) if (n.ai && !n.isAlien) res.votes[n.id] = D.botVote(n, res, L);
     MP.HUD && MP.HUD.openCouncil(res);
   };
 
@@ -476,7 +481,7 @@
       case 'armsembargo': { const t = S.nations[res.target]; if (t) t.launchBanUntil = S.t + 90; cn.effects.push({ id: 'armsembargo', name: res.name, target: res.target, until: S.t + 90 }); break; }
       case 'ceasefire': {
         const al = G.alive();
-        for (const a of al) for (const b of al) if (a.id < b.id && !G.isAllied(a.id, b.id)) {
+        for (const a of al) for (const b of al) if (a.id < b.id && !G.isAllied(a.id, b.id) && !a.isAlien && !b.isAlien) {
           a.truces.set(b.id, S.t + 60); b.truces.set(a.id, S.t + 60);
         }
         for (const at of S.attacks) if (at.to) MP.War.finish(at, true);

@@ -179,9 +179,12 @@
     cv.addEventListener('mousedown', (e) => {
       MP.audio.unlock();
       HUD.closeRadial(e.target);
-      if (e.button === 1 || e.button === 0) down = { x: e.clientX, y: e.clientY, b: e.button, shift: e.shiftKey };
+      // MIDDLE click (or Alt+click on trackpads) opens the orders radial; right-click only cancels / sets patrols
+      if (e.button === 1 || (e.button === 0 && e.altKey)) { e.preventDefault(); HUD.onRadialClick(e); return; }
+      if (e.button === 0) down = { x: e.clientX, y: e.clientY, b: e.button, shift: e.shiftKey };
       if (e.button === 2) { HUD.onRightClick(e); }
     });
+    cv.addEventListener('auxclick', (e) => { if (e.button === 1) e.preventDefault(); });
     window.addEventListener('mousemove', (e) => {
       if (down && (Math.abs(e.clientX - down.x) > 4 || Math.abs(e.clientY - down.y) > 4)) dragging = true;
       if (down && dragging) { MP.Render.pan(e.movementX, e.movementY); }
@@ -405,12 +408,21 @@
 
   // ---------------- radial menu ----------------
   HUD.onRightClick = function (e) {
-    const S = G.S, p = G.player();
+    const S = G.S;
     HUD.updateHover(e.clientX, e.clientY);
     const H = MP.Render.hover;
     if (!S || H.t < 0) return;
     if (HUD.mode) { HUD.clearMode(); return; }
     if (MP.Render.selectedShip && !World.land[H.t]) { MP.Naval.assignPatrol(MP.Render.selectedShip, H.wx, H.wy); MP.Render.selectedShip = null; HUD.toast('Patrol assigned', 'info'); return; }
+    if (MP.Render.selectedShip) { MP.Render.selectedShip = null; return; }
+    if (!HUD._rcHint) { HUD._rcHint = true; HUD.toast('Orders menu: middle-click a nation (or Alt+click)', 'info'); }
+  };
+  HUD.onRadialClick = function (e) {
+    const S = G.S;
+    HUD.updateHover(e.clientX, e.clientY);
+    const H = MP.Render.hover;
+    if (!S || H.t < 0) return;
+    if (HUD.mode) { HUD.clearMode(); return; }
     const o = S.owner[H.t];
     if (!o) return;
     HUD.openRadial(o, e.clientX, e.clientY, H.t);
@@ -765,13 +777,15 @@
     els['h-clock'].className = S.clock < 120 ? 'red' : S.clock < 300 ? 'amber' : '';
     els['h-clockface'].innerHTML = clockFace(S.clock);
     if (S.phase === 'spawn') { els['h-peace'].textContent = U.fmtTime(S.spawnLeft); els['h-peace-wrap'].title = 'Choose your spawn'; }
+    else if (S.alienId && !S.alienLanded) { els['h-peace'].textContent = 'LANDFALL ' + U.fmtTime(S.alienLeft != null ? S.alienLeft : S.alienGrace); els['h-peace-wrap'].title = 'The Void Armada lands when this reaches zero'; els['h-peace-ico'].src = MP.Icons.url('orbit', '#7dff5a', 32); }
     else if (S.defcon === 5 && S.opts.nukes !== false) { els['h-peace'].textContent = U.fmtTime(Game.peaceLeft()); els['h-peace-wrap'].title = 'Peace timer — weapons unlock at DEFCON 4'; }
     else if (S.opts.council) { els['h-peace'].textContent = S.council.active ? 'VOTE' : U.fmtTime(S.council.next); els['h-peace-wrap'].title = 'Next Global Council session'; els['h-peace-ico'].src = MP.Icons.url('capital', '#ffd21f', 32); }
     else els['h-peace'].textContent = '—';
     // spawn banner
     const pupN = S.puppetId ? S.nations[S.puppetId] : null;
     if (S.phase === 'spawn' && p && !HUD.mode) {
-      if (pupN && p.spawned) HUD.banner(`<b>PLACE YOUR PUPPET-STATE</b> · click land for ${U.esc(pupN.name)}${pupN.spawned ? ' (click again to move it)' : ''} · shift-click moves your nation · ${Math.ceil(S.spawnLeft)}s`);
+      if (S.opts.map === 'preset') HUD.banner(p.spawned ? (pupN ? `<b>YOU LEAD ${U.esc(p.name)}</b> · click another country for your PUPPET-STATE · shift-click re-picks yours · ${Math.ceil(S.spawnLeft)}s` : `<b>YOU LEAD ${U.esc(p.name)}</b> · shift-click another country to switch · ${Math.ceil(S.spawnLeft)}s`) : `<b>TAKE COMMAND</b> · click any country to lead it · ${Math.ceil(S.spawnLeft)}s`);
+      else if (pupN && p.spawned) HUD.banner(`<b>PLACE YOUR PUPPET-STATE</b> · click land for ${U.esc(pupN.name)}${pupN.spawned ? ' (click again to move it)' : ''} · shift-click moves your nation · ${Math.ceil(S.spawnLeft)}s`);
       else HUD.banner(`<b>CHOOSE YOUR GROUND</b> · click land to place your nation · ${Math.ceil(S.spawnLeft)}s`);
     }
     else if (S.phase === 'play' && !HUD.mode && els['h-banner'].style.display !== 'none' && els['h-banner-t'].textContent.startsWith('CHOOSE')) HUD.banner(null);

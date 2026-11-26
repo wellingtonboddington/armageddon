@@ -45,6 +45,7 @@
         document.getElementById('boot').removeEventListener('click', start);
         MP.audio.unlock();
         if (MP.settings.get('fullscreen', true)) MP.enterFullscreen();
+        MP.Menu.reconnectFile(); // linked save file: re-grant access inside this click, adopt newer progress
         MP.SFX.play('phase');
         const b = document.getElementById('boot');
         b.classList.add('out');
@@ -99,6 +100,10 @@
   const report = (msg) => { console.error('[MP]', msg); if (Date.now() - errShown > 8000 && MP.HUD && MP.HUD.toast) { errShown = Date.now(); try { MP.HUD.toast('Recovered from an internal error', 'bad'); } catch (e) { /* */ } } };
   window.addEventListener('error', (e) => report(e && (e.message || e.error)));
   window.addEventListener('unhandledrejection', (e) => report(e && e.reason));
+
+  document.addEventListener('contextmenu', (e) => { const t = e.target; if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return; e.preventDefault(); });
+  // middle-click must never start the browser's autoscroll inside the game
+  document.addEventListener('mousedown', (e) => { if (e.button === 1) e.preventDefault(); });
 
   // auto-pause + save when the tab is hidden (handy for spotty connections / switching apps)
   document.addEventListener('visibilitychange', () => {

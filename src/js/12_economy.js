@@ -152,7 +152,7 @@
     n.credits -= cost.credits; n.uranium -= cost.u;
     const S = G.S;
     const b = C.BUILD[type];
-    let time = b.time;
+    let time = b.time * G.mod(n, 'buildSpeed');
     if (type === 'silo') time *= G.mod(n, 'siloBuild');
     if (type === 'warship') {
       n.levels.warship = (n.levels.warship || 0) + 1;

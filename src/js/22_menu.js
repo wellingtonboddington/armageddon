@@ -31,8 +31,13 @@
   let P = null;
   Menu.load = function () {
     try { P = JSON.parse(localStorage.getItem(PKEY) || 'null'); } catch (e) { P = null; }
+    Menu.sanitize();
+    Menu.dailyCheck();
+    return P;
+  };
+  Menu.sanitize = function () {
     const d = defaultProfile();
-    if (!P || P.v !== 1) P = d;
+    if (!P || typeof P !== 'object' || P.v !== 1) P = d;
     for (const k in d) if (P[k] === undefined) P[k] = d[k];
     for (const k in d.rules) if (P.rules[k] === undefined) P.rules[k] = d.rules[k];
     for (const k in d.owned) if (!P.owned[k]) P.owned[k] = d.owned[k];
@@ -47,10 +52,102 @@
     if (!(P.active >= 0 && P.active < 5)) P.active = 0;
     if (!isFinite(P.level) || P.level < 1) P.level = 1;
     while (Menu.skillPoints && Menu.skillPoints() < 0) P.skills.pop();
-    Menu.dailyCheck();
-    return P;
+    if (!P.missions) P.missions = null;
   };
-  Menu.save = function () { try { localStorage.setItem(PKEY, JSON.stringify(P)); } catch (e) { /* blocked */ } };
+  Menu.save = function () {
+    P.savedAt = Date.now();
+    try { localStorage.setItem(PKEY, JSON.stringify(P)); } catch (e) { /* blocked */ }
+    Menu.scheduleFileSync();
+  };
+
+  // ================= SAVE FILE: progress that survives game updates, browsers and computers =================
+  const FILE_KIND = 'midnight-protocol-profile';
+  Menu.exportData = function () {
+    let settings = {};
+    try { settings = JSON.parse(localStorage.getItem('mp.settings.v1') || '{}'); } catch (e) { settings = {}; }
+    return { app: FILE_KIND, v: 1, savedAt: Date.now(), profile: P, settings };
+  };
+  Menu.applyImport = function (data) {
+    if (!data || data.app !== FILE_KIND || !data.profile) throw new Error('Not a Midnight Protocol save file');
+    P = data.profile;
+    Menu.sanitize();
+    if (data.settings && typeof data.settings === 'object') { for (const k in data.settings) MP.settings.set(k, data.settings[k]); MP.settings.flush(); MP.audio.applyVolumes(); }
+    try { localStorage.setItem(PKEY, JSON.stringify(P)); } catch (e) { /* blocked */ }
+    Menu.render();
+  };
+  Menu.exportFile = function () {
+    const blob = new Blob([JSON.stringify(Menu.exportData(), null, 1)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `midnight-protocol-save-LV${P.level}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    MP.HUD.toast('Save file downloaded', 'good');
+  };
+  Menu.importFile = function (file) {
+    const fr = new FileReader();
+    fr.onload = () => {
+      try { Menu.applyImport(JSON.parse(String(fr.result))); MP.HUD.toast(`Save loaded · LEVEL ${P.level}`, 'good'); MP.SFX.play('researchDone'); }
+      catch (e) { MP.HUD.toast('That file is not a valid save', 'bad'); MP.SFX.play('error'); }
+    };
+    fr.readAsText(file);
+  };
+  // optional auto-updating save file (File System Access API: Chrome / Edge)
+  Menu.fileHandle = null; Menu.fileStatus = '';
+  Menu.canLink = () => typeof window.showSaveFilePicker === 'function';
+  Menu.linkFile = async function () {
+    try {
+      const h = await window.showSaveFilePicker({ suggestedName: 'midnight-protocol-save.json', types: [{ description: 'Midnight Protocol save', accept: { 'application/json': ['.json'] } }] });
+      Menu.fileHandle = h;
+      try { await MP.Game.kvPut('profileFile', h); } catch (e) { /* handle could not be stored */ }
+      await Menu.writeFile();
+      MP.HUD.toast('Auto-save file linked', 'good');
+    } catch (e) { if (e && e.name !== 'AbortError') MP.HUD.toast('Could not link a save file here', 'bad'); }
+  };
+  Menu.writeFile = async function () {
+    const h = Menu.fileHandle; if (!h) return;
+    try {
+      if (h.queryPermission && (await h.queryPermission({ mode: 'readwrite' })) !== 'granted') { Menu.fileStatus = 'waiting for permission'; return; }
+      const w = await h.createWritable();
+      await w.write(JSON.stringify(Menu.exportData(), null, 1));
+      await w.close();
+      Menu.fileStatus = 'saved ' + new Date().toLocaleTimeString();
+    } catch (e) { Menu.fileStatus = 'write failed'; }
+  };
+  let fileT = 0;
+  Menu.scheduleFileSync = function () { if (!Menu.fileHandle) return; clearTimeout(fileT); fileT = setTimeout(() => Menu.writeFile(), 1500); };
+  // on boot (inside the first click): re-open the linked file; adopt it when it holds newer progress
+  Menu.reconnectFile = async function () {
+    try {
+      const h = await MP.Game.kvGet('profileFile');
+      if (!h || !h.getFile) return;
+      Menu.fileHandle = h;
+      let perm = h.queryPermission ? await h.queryPermission({ mode: 'readwrite' }) : 'granted';
+      if (perm !== 'granted' && h.requestPermission) perm = await h.requestPermission({ mode: 'readwrite' });
+      if (perm !== 'granted') { Menu.fileStatus = 'permission needed'; return; }
+      const f = await h.getFile();
+      const data = JSON.parse(await f.text());
+      if (data && data.app === FILE_KIND && data.profile && (data.profile.savedAt || 0) > (P.savedAt || 0)) { Menu.applyImport(data); MP.HUD.toast(`Progress restored from your save file · LEVEL ${P.level}`, 'good'); }
+      else Menu.writeFile();
+    } catch (e) { /* no linked file, or it moved */ }
+  };
+  Menu.openSaveFile = function () {
+    modal(`<div class="mh"><span class="tag">ARCHIVE</span><h2>SAVE FILE</h2>
+      <p class="dim">Your level, skills, unlocks and settings are kept in this browser automatically, so a newer version of the game opened in the same browser keeps your progress. A save file carries it anywhere: another browser, another computer, or a fresh copy of the game.</p></div>
+      <div class="kv"><span>PROFILE</span><b>${U.esc(P.name)} · LEVEL ${P.level} · ${P.wins} WINS</b></div>
+      <div class="kv"><span>AUTO-SAVE FILE</span><b id="sf-status">${Menu.fileHandle ? U.esc(Menu.fileHandle.name || 'linked') + ' · ' + U.esc(Menu.fileStatus || 'linked') : 'not linked'}</b></div>
+      <div class="row-btns"><button class="btn primary" id="sf-export">EXPORT SAVE FILE</button><button class="btn" id="sf-import">IMPORT SAVE FILE</button>
+      ${Menu.canLink() ? '<button class="btn" id="sf-link">' + (Menu.fileHandle ? 'RE-LINK' : 'LINK') + ' AUTO-SAVE FILE</button>' : ''}</div>
+      ${Menu.canLink() ? '<p class="dim small">Linking keeps one file on your computer updated after every change. When you open a new version of the game, click once and it reloads your progress from that file.</p>' : '<p class="dim small">This browser cannot keep a linked file; export a save after playing and import it into new versions.</p>'}
+      <input type="file" id="sf-file" accept=".json,application/json" style="display:none">`,
+    (box) => {
+      box.querySelector('#sf-export').onclick = Menu.exportFile;
+      const inp = box.querySelector('#sf-file');
+      box.querySelector('#sf-import').onclick = () => inp.click();
+      inp.onchange = () => { if (inp.files && inp.files[0]) Menu.importFile(inp.files[0]); };
+      const l = box.querySelector('#sf-link'); if (l) l.onclick = async () => { await Menu.linkFile(); const st = box.querySelector('#sf-status'); if (st) st.textContent = (Menu.fileHandle ? (Menu.fileHandle.name || 'linked') + ' · ' + (Menu.fileStatus || 'linked') : 'not linked'); };
+    });
+  };
   Menu.profile = () => P;
   Menu.level = () => P ? P.level : 1;
   const xpNeed = (L) => 400 + 200 * (L - 1);
@@ -235,7 +332,7 @@
       </div>
       <div class="m-tr">
         <span class="scrap"><img class="ico" src="${MP.Icons.url('gear', '#ffd21f', 32)}"> ${U.fmtInt(P.scrap)}</span>
-        <button class="btn m-top ${Menu.skillPoints() > 0 ? 'hot' : ''}" id="m-skills">SKILLS${Menu.skillPoints() > 0 ? ' · ' + Menu.skillPoints() : ''}</button><button class="btn m-top" id="m-ranks">RANKS</button><button class="btn m-top" id="m-shop">ARMORY</button><button class="btn m-top" id="m-fs" title="Toggle fullscreen">⛶</button><button class="btn icon m-top" id="m-settings">${MP.Icons.svgIcon('gear', '#ece6cf', 32)}</button>
+        <button class="btn m-top ${Menu.skillPoints() > 0 ? 'hot' : ''}" id="m-skills">SKILLS${Menu.skillPoints() > 0 ? ' · ' + Menu.skillPoints() : ''}</button><button class="btn m-top" id="m-save" title="Export / import / link your save file">SAVE FILE</button><button class="btn m-top" id="m-ranks">RANKS</button><button class="btn m-top" id="m-shop">ARMORY</button><button class="btn m-top" id="m-fs" title="Toggle fullscreen">⛶</button><button class="btn icon m-top" id="m-settings">${MP.Icons.svgIcon('gear', '#ece6cf', 32)}</button>
       </div>
       <div class="m-center">
         <h1 class="m-title" data-text="MIDNIGHT PROTOCOL">MIDNIGHT PROTOCOL</h1>
@@ -250,6 +347,8 @@
           <div class="m-div"><span>OPERATIONS</span></div>
           <div class="m-row"><img class="ico ri" src="${MP.Icons.url('shield', '#ece6cf', 40)}"><div class="mr-t"><b>TEAMS</b><span><select id="m-teams">${[2, 3, 4].map((t) => `<option value="${t}" ${r.teams === t ? 'selected' : ''}>${t} TEAMS</option>`).join('')}</select> · ${r.bots + 1} NATIONS</span></div><button class="btn" id="m-teams-go">JOIN</button></div>
           <div class="m-row"><img class="ico ri" src="${MP.Icons.url('gear', '#ece6cf', 40)}"><div class="mr-t"><b>CUSTOM</b><span>MATCH RULES · BOTS · LENGTH · WIN %</span></div><button class="btn" id="m-custom">SET UP</button></div>
+          <div class="m-row"><img class="ico ri" src="${MP.Icons.url('flag', '#ece6cf', 40)}"><div class="mr-t"><b>PRE-SET COUNTRIES</b><span>LEAD A REAL COUNTRY ON REAL BORDERS${P.presetCountry ? ' · ' + U.esc(Menu.countryName(P.presetCountry)) : ''}</span></div><button class="btn" id="m-preset">SET UP</button></div>
+          <div class="m-row alien"><img class="ico ri" src="${MP.Icons.url('orbit', '#7dff5a', 40)}"><div class="mr-t"><b>ALIEN INVASION</b><span>THE VOID ARMADA IS COMING · ${P.alienMap === 'custom' ? 'CUSTOM NATIONS · 5:00 GRACE' : 'PRE-SET COUNTRIES · 0:30 GRACE'}</span></div><button class="btn" id="m-alien">SET UP</button></div>
           <div class="m-row"><img class="ico ri" src="${MP.Icons.url('radar', '#ece6cf', 40)}"><div class="mr-t"><b>WATCH</b><span>SPECTATE ${Math.min(100, r.bots + 1)} AI NATIONS</span></div><button class="btn" id="m-watch">WATCH</button></div>
         </div>
       </div>
@@ -274,6 +373,9 @@
     $('m-teams').onchange = (e) => { P.rules.teams = Number(e.target.value); Menu.save(); };
     $('m-teams-go').onclick = () => { MP.Advisor && MP.Advisor.event('menu.teams', {}); Menu.startMatch(Menu.makeOpts('teams')); };
     $('m-custom').onclick = Menu.openCustom;
+    $('m-preset').onclick = () => Menu.openOperation('preset');
+    $('m-alien').onclick = () => Menu.openOperation('alien');
+    $('m-save').onclick = Menu.openSaveFile;
     $('m-watch').onclick = () => { MP.Advisor && MP.Advisor.event('menu.watch', {}); Menu.startMatch(Menu.makeOpts('watch')); };
     $('m-ranks').onclick = Menu.openRanks;
     $('m-shop').onclick = Menu.openShop;
@@ -382,9 +484,67 @@
       peaceMinutes: r.peaceMinutes, startCredits: r.startCredits, nukes: r.nukes, weather: r.weather, council: r.council,
       seed: (Math.random() * 4294967295) >>> 0,
       player: { name: P.name, flag: P.flag, color: tc.rgb.slice(), pattern: lo.pattern, doctrine: lo.doctrine, missile: lo.missile, detonation: lo.detonation, skills: P.skills.slice() },
-      party: mode === 'ffa' && P.partyOn ? P.party.slice(0, P.partyMode === 'puppet' ? 1 : C.PARTY_MAX) : [],
+      party: (mode === 'ffa' || mode === 'alien') && P.partyOn ? P.party.slice(0, P.partyMode === 'puppet' ? 1 : C.PARTY_MAX).map((b) => Object.assign({}, b)) : [],
+      map: 'custom',
       partyMode: P.partyMode,
     };
+  };
+
+  Menu.countryName = function (i) {
+    const c = MP.World.countries ? MP.World.countries() : null;
+    const x = c ? c.byIdx.get(i) : null;
+    return x ? x.name : '';
+  };
+  Menu.openOperation = function (kind) {
+    const alien = kind === 'alien';
+    const list = MP.World.playableCountries();
+    const total = list.reduce((a, c) => a + c.tiles, 0);
+    let search = '';
+    MP.Advisor && MP.Advisor.event('menu.custom', {});
+    modal('<div id="op-body"></div>', (box, close) => {
+      const body = box.querySelector('#op-body');
+      const fill = () => {
+        const el = body.querySelector('#op-list'); if (!el) return;
+        const q = search.toLowerCase();
+        el.innerHTML = `<button class="ctry ${!P.presetCountry ? 'on' : ''}" data-ci="0"><span class="cf">⌖</span><b>CHOOSE ON THE MAP</b><i>click a country during the first seconds</i></button>` +
+          list.filter((c) => !q || c.name.toLowerCase().includes(q)).map((c) => `<button class="ctry ${P.presetCountry === c.i ? 'on' : ''}" data-ci="${c.i}">${MP.Flags.img(c.flag || 'f:3a3524|nuke:ffd21f@0.5,0.5,0.3', 'flag sm')}<b>${U.esc(c.name)}</b><i>${(100 * c.tiles / total).toFixed(c.tiles / total > 0.01 ? 1 : 2)}% of the world</i></button>`).join('');
+      };
+      const render = () => {
+        const mapPreset = !alien || P.alienMap !== 'custom';
+        const party = P.partyOn ? P.party.slice(0, P.partyMode === 'puppet' ? 1 : C.PARTY_MAX) : [];
+        body.innerHTML = `<div class="mh"><span class="tag">OPERATION</span><h2>${alien ? 'ALIEN INVASION' : 'PRE-SET COUNTRIES'}</h2>
+          <p class="dim">${alien ? 'The Void Armada chooses its landfall while the world sets up. It builds at hyper speed, earns five times as much and fires orbital strikes from the start. No one is allied except your party, and not every nation is interested in fighting it.' : 'Every nation starts on its real borders. Pick the country you will lead.'}</p></div>
+          ${alien ? `<div class="pmode"><button class="btn sm ${mapPreset ? 'on' : ''}" data-am="preset">PRE-SET COUNTRIES · 0:30 GRACE</button><button class="btn sm ${!mapPreset ? 'on' : ''}" data-am="custom">CUSTOM NATIONS · 5:00 GRACE</button></div>` : ''}
+          ${mapPreset ? `<h4>YOUR COUNTRY</h4><input class="search" id="op-search" placeholder="SEARCH ${list.length} COUNTRIES" value="${U.esc(search)}"><div class="ctry-list" id="op-list"></div>` : '<p class="dim">You place your own nation on the map, as in a normal match.</p>'}
+          <h4>${P.partyMode === 'puppet' ? 'PUPPET-STATE' : 'PARTY'}</h4>
+          ${party.length ? party.map((b, i) => `<div class="kv op-party"><span>${MP.Flags.img(b.flag, 'flag xs')} ${U.esc(b.name)}</span>${mapPreset ? `<select data-pc="${i}"><option value="0">COUNTRY: ${P.partyMode === 'puppet' ? 'CLICK ON THE MAP' : 'RANDOM'}</option>${list.map((c) => `<option value="${c.i}" ${b.country === c.i ? 'selected' : ''}>${U.esc(c.name)}</option>`).join('')}</select>` : ''}<select data-pd="${i}">${C.DOCTRINES.map((d) => `<option value="${d.id}" ${b.doctrine === d.id ? 'selected' : ''}>${d.name}</option>`).join('')}</select></div>`).join('')
+            : '<p class="dim small">No party deployed: nobody is allied at the start. Add bots in the PARTY panel and tick “Deploy party” to bring allies.</p>'}
+          <div class="row-btns"><button class="btn primary" id="op-go">START ${alien ? 'INVASION' : 'OPERATION'}</button></div>`;
+        fill();
+        const se = body.querySelector('#op-search');
+        if (se) se.addEventListener('input', () => { search = se.value; fill(); });
+      };
+      body.addEventListener('click', (e) => {
+        const am = e.target.closest('[data-am]');
+        if (am) { P.alienMap = am.dataset.am; Menu.save(); render(); return; }
+        const ct = e.target.closest('[data-ci]');
+        if (ct) { P.presetCountry = Number(ct.dataset.ci) || 0; Menu.save(); fill(); MP.SFX.play('click'); return; }
+        if (e.target.closest('#op-go')) {
+          const mapPreset = !alien || P.alienMap !== 'custom';
+          const o = Menu.makeOpts(alien ? 'alien' : 'ffa');
+          o.map = mapPreset ? 'preset' : 'custom';
+          if (mapPreset) o.player.country = P.presetCountry || 0;
+          close();
+          Menu.startMatch(o);
+        }
+      });
+      body.addEventListener('change', (e) => {
+        const pc = e.target.closest('[data-pc]'), pd = e.target.closest('[data-pd]');
+        if (pc) { P.party[Number(pc.dataset.pc)].country = Number(pc.value) || 0; Menu.save(); }
+        if (pd) { P.party[Number(pd.dataset.pd)].doctrine = pd.value; Menu.save(); }
+      });
+      render();
+    });
   };
 
   Menu.startMatch = function (opts) {
@@ -683,7 +843,8 @@
     MP.Advisor && MP.Advisor.event('menu.how_to_play', {});
     const def = (t) => C.DEFENSE[t];
     modal(`<div class="mh"><span class="tag">BRIEFING</span><h2>HOW TO PLAY</h2></div><div class="howto">
-      <h4>SPAWN & EXPAND</h4><p>Click open land to choose where your nation begins (${C.SPAWN_SECONDS}s). Then click unclaimed land to expand; the attack presets (10–75%) set how many troops go. Click a neighbour's land to attack it; right-click any nation for orders (Info · Attack · Boat · Ally · Truce · Embargo · Gift · Focus).</p>
+      <h4>SPAWN & EXPAND</h4><p>Click open land to choose where your nation begins (${C.SPAWN_SECONDS}s). Then click unclaimed land to expand; the attack presets (10–75%) set how many troops go. Click a neighbour's land to attack it — where you click is where your forces concentrate. <b>Middle-click</b> (or Alt+click) any nation for orders (Info · Attack · Boat · Ally · Truce · Target · Embargo · Gift · Ask · Cede · Focus). Right-click cancels.</p>
+      <h4>PRE-SET COUNTRIES & ALIEN INVASION</h4><p>Lead a real country on real borders: pick it in the setup or click it on the map during the first seconds. In ALIEN INVASION the Void Armada chooses its landfall while the world sets up and lands after the grace period (0:30 on pre-set countries, 5:00 with custom nations). It builds at hyper speed, earns five times as much and fires orbital strikes from the start. No one is allied except your party — and not every nation cares to fight it.</p>
       <h4>LAND</h4><p>Old land is <b>dug in</b> — it costs ×${C.DUG_IN_MULT} the troops. <b>Striped</b> land was taken recently and is soft. Fallout softens any line. Highlands and mountains cost more and slow the advance. Attacks far from your cities and logistics hubs suffer <b>supply</b> penalties; pockets cut off from your capital starve, and fully encircled pockets are annexed.</p>
       <h4>BUILDINGS (1–8)</h4><p><b>City</b> +25k troop cap per level · <b>Port</b> trade ships & warships · <b>Factory</b> sends convoys to cities, ports and factories within ${C.FACTORY_RANGE} tiles (each level doubles convoys and gold) · <b>Logistics Hub</b> links everything within ${C.HUB_RANGE} tiles with white roads, convoys 25% faster and reach 2 stops · <b>Enrichment</b> must sit on a free ☢ deposit — without one uranium caps at ${C.URANIUM_CAP_NO_DEPOSIT} · <b>Fort</b> attackers pay ×5 troops and move ×3 slower within ${C.FORT_RADIUS} tiles (range doubles per level) · <b>Warship</b> picks its own targets, captures enemy trade ships; click it then click the sea to set a patrol · <b>Silo</b> launches missiles. Place a building on one of yours of the same type to upgrade it — same price as a new one.</p>
       <h4>DEFCON & THE CLOCK</h4><p>The Doomsday Clock starts at 12:00 to midnight. It drifts forward, jumps with every fallen nation, betrayal and strike, and is pulled back by interceptions, lasers and Council treaties. At 0:00 the Nuclear Winter ends the match with no winner. DEFCON 4 arrives when the peace timer expires; DEFCON 3 when anyone holds 10% or the first bomb falls; DEFCON 2 at 25% or 5:00 on the clock; DEFCON 1 at 2:00.</p>

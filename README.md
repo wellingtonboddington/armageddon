@@ -2,6 +2,10 @@
 
 An original, fully offline real-time grand strategy game in a single HTML file. You place a nation on a real world map, expand, trade, fortify and negotiate against up to 99 AI commanders. Then you decide how close to midnight you are willing to push the Doomsday Clock.
 
+**Modes:** Free-for-all, Teams, Custom rules, Watch, **PRE-SET COUNTRIES** (lead a real country on real borders) and **ALIEN INVASION** (the Void Armada lands after a grace period of 0:30 on pre-set countries or 5:00 with custom nations).
+
+**Your progress:** level, skills, unlocks and settings are kept in your browser. SAVE FILE in the menu exports, imports or links a save file, so progress carries across new versions, browsers and computers.
+
 **Play:** download [`index.html`](index.html) and open it in Chrome, Edge or Firefox. It doesn't need an internet connection, an install, a server or any other files. Progress, settings and the auto-save live in your browser's local storage. The game goes fullscreen on your first click; you can turn that off in Settings or use the ⛶ button.
 
 ## What's inside
@@ -52,7 +56,8 @@ An original, fully offline real-time grand strategy game in a single HTML file. 
 | Input | Action |
 |---|---|
 | Left click | Spawn, expand, attack, place a building, fire a weapon |
-| Right click | Radial orders on a nation (Info · Attack · Boat · Ally · Truce · Embargo · Gift · Focus) |
+| Middle click (or Alt+click) | Orders menu on a nation (Info · Attack · Boat · Ally · Truce · Target · Embargo · Gift · Ask · Cede · Focus) |
+| Right click | Cancel the current mode / set a selected warship's patrol |
 | Drag / wheel / minimap | Pan / zoom / jump |
 | `1`–`8` | City, Port, Factory, Hub, Enrichment, Fort, Warship, Silo |
 | `R` `T` `Y` `U` `J` | Radar, SAM, ABM, Laser, Aegis Net |
