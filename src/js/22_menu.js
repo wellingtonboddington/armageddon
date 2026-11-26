@@ -320,7 +320,7 @@
       <canvas id="m-globe"></canvas>
       <div class="m-scan"></div>
       <div class="m-tl">
-        <button class="panel brk m-card clickable" id="m-card">${MP.Flags.img(P.flag, 'flag mflag')}<div><b>${U.esc(P.name)}</b><div class="lv">LV ${P.level} <span class="bar"><i style="width:${lvlPct}%"></i></span></div></div></button>
+        <button class="panel brk m-card clickable" id="m-card">${MP.Flags.img(P.flag, 'flag mflag')}<div><b>${U.esc(P.name)}</b><div class="lv">LV ${P.level} <span class="bar"><i style="width:${lvlPct}%"></i></span></div><div class="scrap"><img class="ico" src="${MP.Icons.url('gear', '#ffd21f', 32)}"> ${U.fmtInt(P.scrap)} SCRAP</div></div></button>
         <div class="panel brk m-party">
           <span class="tag">SQUAD</span><h3>${P.partyMode === 'puppet' ? 'PUPPET-STATE' : 'PARTY'}</h3>
           <div class="pmode"><button class="btn sm ${P.partyMode !== 'puppet' ? 'on' : ''}" data-pm="party">PARTY ×2</button><button class="btn sm ${P.partyMode === 'puppet' ? 'on' : ''}" data-pm="puppet">PUPPET-STATE ×1</button></div>
@@ -331,7 +331,6 @@
         <div class="m-note">OFFLINE BUILD · NO NETWORK REQUIRED<br>${C.BOT_NAMES.length}+ AI COMMANDERS STANDING BY</div>
       </div>
       <div class="m-tr">
-        <span class="scrap"><img class="ico" src="${MP.Icons.url('gear', '#ffd21f', 32)}"> ${U.fmtInt(P.scrap)}</span>
         <button class="btn m-top ${Menu.skillPoints() > 0 ? 'hot' : ''}" id="m-skills">SKILLS${Menu.skillPoints() > 0 ? ' · ' + Menu.skillPoints() : ''}</button><button class="btn m-top" id="m-save" title="Export / import / link your save file">SAVE FILE</button><button class="btn m-top" id="m-ranks">RANKS</button><button class="btn m-top" id="m-shop">ARMORY</button><button class="btn m-top" id="m-fs" title="Toggle fullscreen">⛶</button><button class="btn icon m-top" id="m-settings">${MP.Icons.svgIcon('gear', '#ece6cf', 32)}</button>
       </div>
       <div class="m-center">
@@ -345,11 +344,14 @@
           </div>
           <div class="m-row"><img class="ico ri" src="${MP.Icons.url(doc.icon === 'flag' ? 'flag' : doc.icon, '#ece6cf', 40)}"><div class="mr-t"><b>${doc.name.toUpperCase()}</b><span>${doc.desc}</span></div><canvas class="lo-prev" width="70" height="40"></canvas><button class="btn" id="m-loadout">LOADOUT</button></div>
           <div class="m-div"><span>OPERATIONS</span></div>
-          <div class="m-row"><img class="ico ri" src="${MP.Icons.url('shield', '#ece6cf', 40)}"><div class="mr-t"><b>TEAMS</b><span><select id="m-teams">${[2, 3, 4].map((t) => `<option value="${t}" ${r.teams === t ? 'selected' : ''}>${t} TEAMS</option>`).join('')}</select> · ${r.bots + 1} NATIONS</span></div><button class="btn" id="m-teams-go">JOIN</button></div>
-          <div class="m-row"><img class="ico ri" src="${MP.Icons.url('gear', '#ece6cf', 40)}"><div class="mr-t"><b>CUSTOM</b><span>MATCH RULES · BOTS · LENGTH · WIN %</span></div><button class="btn" id="m-custom">SET UP</button></div>
-          <div class="m-row"><img class="ico ri" src="${MP.Icons.url('flag', '#ece6cf', 40)}"><div class="mr-t"><b>PRE-SET COUNTRIES</b><span>LEAD A REAL COUNTRY ON REAL BORDERS${P.presetCountry ? ' · ' + U.esc(Menu.countryName(P.presetCountry)) : ''}</span></div><button class="btn" id="m-preset">SET UP</button></div>
-          <div class="m-row alien"><img class="ico ri" src="${MP.Icons.url('orbit', '#7dff5a', 40)}"><div class="mr-t"><b>ALIEN INVASION</b><span>THE VOID ARMADA IS COMING · ${P.alienMap === 'custom' ? 'CUSTOM NATIONS · 5:00 GRACE' : 'PRE-SET COUNTRIES · 0:30 GRACE'}</span></div><button class="btn" id="m-alien">SET UP</button></div>
-          <div class="m-row"><img class="ico ri" src="${MP.Icons.url('radar', '#ece6cf', 40)}"><div class="mr-t"><b>WATCH</b><span>SPECTATE ${Math.min(100, r.bots + 1)} AI NATIONS</span></div><button class="btn" id="m-watch">WATCH</button></div>
+          <div class="ops">
+            <div class="op clickable" id="m-teams-go" role="button"><img class="ico" src="${MP.Icons.url('shield', '#ece6cf', 40)}"><div class="op-t"><b>TEAMS</b><span>ALLIED BLOCS</span></div>
+              <div class="seg" id="m-teams">${[2, 3, 4].map((t) => `<button class="${r.teams === t ? 'on' : ''}" data-tc="${t}">${t}</button>`).join('')}</div></div>
+            <button class="op" id="m-custom"><img class="ico" src="${MP.Icons.url('gear', '#ece6cf', 40)}"><div class="op-t"><b>CUSTOM</b><span>MATCH RULES</span></div></button>
+            <button class="op" id="m-watch"><img class="ico" src="${MP.Icons.url('radar', '#ece6cf', 40)}"><div class="op-t"><b>WATCH</b><span>SPECTATE AI</span></div></button>
+            <button class="op wide" id="m-preset"><img class="ico" src="${MP.Icons.url('flag', '#ece6cf', 40)}"><div class="op-t"><b>PRE-SET COUNTRIES</b><span>${P.presetCountry ? 'LEADING ' + U.esc(Menu.countryName(P.presetCountry)) : 'REAL COUNTRIES · REAL BORDERS'}</span></div></button>
+            <button class="op wide alien" id="m-alien"><img class="ico" src="${MP.Icons.url('orbit', '#7dff5a', 40)}"><div class="op-t"><b>ALIEN INVASION</b><span>${P.alienMap === 'custom' ? 'CUSTOM NATIONS · 5:00 GRACE' : 'PRE-SET COUNTRIES · 0:30 GRACE'}</span></div></button>
+          </div>
         </div>
       </div>
       <div class="m-right">
@@ -370,7 +372,12 @@
     $('m-play').onclick = () => Menu.startMatch(Menu.makeOpts('ffa'));
     $('m-how').onclick = Menu.openHowTo;
     $('m-loadout').onclick = Menu.openLoadouts;
-    $('m-teams').onchange = (e) => { P.rules.teams = Number(e.target.value); Menu.save(); };
+    $('m-teams').onclick = (e) => {
+      e.stopPropagation();
+      const b = e.target.closest('[data-tc]'); if (!b) return;
+      P.rules.teams = Number(b.dataset.tc); Menu.save();
+      $('m-teams').querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+    };
     $('m-teams-go').onclick = () => { MP.Advisor && MP.Advisor.event('menu.teams', {}); Menu.startMatch(Menu.makeOpts('teams')); };
     $('m-custom').onclick = Menu.openCustom;
     $('m-preset').onclick = () => Menu.openOperation('preset');
@@ -456,7 +463,7 @@
     const d = await MP.Game.hasSave();
     if (!d) { box.innerHTML = ''; return; }
     const mins = Math.floor((d.t - (d.playStart || 0)) / 60);
-    box.innerHTML = `<div class="m-row resume"><img class="ico ri" src="${MP.Icons.url('emp', '#ffd21f', 40)}"><div class="mr-t"><b>RESUME OPERATION</b><span>${d.opts.mode.toUpperCase()} · ${mins} MIN IN · SAVED ${new Date(d.savedAt).toLocaleString()}</span></div><button class="btn primary" id="m-resume-go">RESUME</button><button class="btn sm" id="m-resume-x" title="Discard save">✕</button></div>`;
+    box.innerHTML = `<div class="resume-bar"><img class="ico" src="${MP.Icons.url('emp', '#ffd21f', 40)}"><div class="op-t"><b>RESUME OPERATION</b><span>${U.esc((d.opts.map === 'preset' ? 'PRE-SET ' : '') + d.opts.mode.toUpperCase())} · ${mins} MIN IN · ${new Date(d.savedAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</span></div><button class="btn primary" id="m-resume-go">RESUME</button><button class="btn sm" id="m-resume-x" title="Discard save">✕</button></div>`;
     document.getElementById('m-resume-go').onclick = async () => { Menu.hide(); const ok = await MP.Game.load(); if (!ok) { Menu.show(); } };
     document.getElementById('m-resume-x').onclick = () => { MP.Game.clearSave(); box.innerHTML = ''; };
   };

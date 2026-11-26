@@ -408,11 +408,57 @@ body.watch .hud-bc .buildbar, body.watch .hud-bc .stats, body.watch #h-dock, bod
 .m-row.alien { border-color: rgba(125, 255, 90, .35); }
 .m-row.alien b { color: #b8ff9a; }
 
-/* compact operations list so the whole menu fits shorter screens */
-.m-main { max-height: calc(100vh - 440px); min-height: 220px; overflow-y: auto; }
-.m-main .m-row { padding: 6px 10px; }
-.m-main .m-row .mr-t b { font-size: 15px; }
-@media (max-height: 900px) { #m-adv-slot { min-height: 0; } #advisor-menu canvas { max-height: 200px; } .m-title { font-size: 30px; margin: 4px 0 0; } }
+/* ---------- main menu: everything fits on one screen, no scrolling ---------- */
+.m-center { top: 10px; gap: 4px; }
+#m-adv-slot { min-height: 0; }
+#menu .vsp-menu { gap: 6px; padding-top: 4px; }
+#menu .vsp-frame { width: 216px; height: 216px; }
+#menu .vsp-frame .vsp-cv { width: 200px; height: 200px; }
+#menu .vsp-mline { min-height: 21px; font-size: 14px; }
+#menu .vsp-menu .vsp-hint { display: none; }
+.m-main { gap: 7px; }
+.m-play { padding: 8px 16px; }
+.m-play b { font-size: 28px; }
+.m-row { padding: 7px 10px; }
+.resume-bar { display: flex; align-items: center; gap: 10px; padding: 7px 10px; background: #1d1a0c; border: 1px solid var(--y); }
+.resume-bar .ico { width: 22px; height: 22px; }
+.resume-bar .op-t { flex: 1; }
+.ops { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.op { grid-column: span 2; display: flex; align-items: center; gap: 9px; text-align: left; background: #15130d; border: 1px solid var(--line); padding: 8px 10px; cursor: pointer; min-width: 0; }
+.op.wide { grid-column: span 3; }
+.op:hover { border-color: var(--y); background: #1f1c10; }
+.op .ico { width: 22px; height: 22px; flex: none; }
+.op-t { min-width: 0; flex: 1; }
+.op-t b { display: block; font: 800 14px var(--head); letter-spacing: .06em; white-space: nowrap; }
+.op-t span { display: block; font-size: 9.5px; color: var(--dim); letter-spacing: .06em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.op.alien { border-color: rgba(125, 255, 90, .4); }
+.op.alien b { color: #b8ff9a; }
+.op.alien:hover { border-color: #7dff5a; background: #121a0e; }
+.seg { display: flex; flex: none; }
+.seg button { width: 22px; height: 22px; background: #0d0c08; border: 1px solid var(--line2); color: var(--dim); cursor: pointer; font-size: 11px; padding: 0; margin-left: -1px; }
+.seg button.on { background: var(--y); color: #0a0a08; border-color: var(--y); }
+@media (min-height: 1040px) {
+  #menu .vsp-frame { width: 256px; height: 256px; }
+  #menu .vsp-frame .vsp-cv { width: 240px; height: 240px; }
+  .m-center { top: 16px; gap: 8px; }
+}
+@media (max-height: 820px) {
+  #menu .vsp-frame { width: 166px; height: 166px; }
+  #menu .vsp-frame .vsp-cv { width: 150px; height: 150px; }
+  .m-title { font-size: 28px; margin: 2px 0 0; }
+  .m-play b { font-size: 24px; }
+}
+
+/* thin themed scrollbars wherever something does scroll (modals, lists) */
+* { scrollbar-width: thin; scrollbar-color: #57502f #0d0c08; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: #0d0c08; }
+::-webkit-scrollbar-thumb { background: #3a3524; border: 1px solid #57502f; }
+::-webkit-scrollbar-thumb:hover { background: #57502f; }
+
+.m-card .scrap { color: var(--y); font-size: 11px; font-weight: 700; margin-top: 4px; letter-spacing: .06em; }
+.m-card .scrap .ico { width: 12px; height: 12px; }
+@media (max-width: 1500px) { .m-title { font-size: 26px; letter-spacing: .1em; } .m-top { padding: 8px 10px; } }
 
 /* ==== src/advisor/advisor.css ==== */
 /* MIDNIGHT PROTOCOL — VESPER advisor. Every selector is .vsp- prefixed; colours come from the host palette. */
@@ -10376,7 +10422,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
       <canvas id="m-globe"></canvas>
       <div class="m-scan"></div>
       <div class="m-tl">
-        <button class="panel brk m-card clickable" id="m-card">${MP.Flags.img(P.flag, 'flag mflag')}<div><b>${U.esc(P.name)}</b><div class="lv">LV ${P.level} <span class="bar"><i style="width:${lvlPct}%"></i></span></div></div></button>
+        <button class="panel brk m-card clickable" id="m-card">${MP.Flags.img(P.flag, 'flag mflag')}<div><b>${U.esc(P.name)}</b><div class="lv">LV ${P.level} <span class="bar"><i style="width:${lvlPct}%"></i></span></div><div class="scrap"><img class="ico" src="${MP.Icons.url('gear', '#ffd21f', 32)}"> ${U.fmtInt(P.scrap)} SCRAP</div></div></button>
         <div class="panel brk m-party">
           <span class="tag">SQUAD</span><h3>${P.partyMode === 'puppet' ? 'PUPPET-STATE' : 'PARTY'}</h3>
           <div class="pmode"><button class="btn sm ${P.partyMode !== 'puppet' ? 'on' : ''}" data-pm="party">PARTY ×2</button><button class="btn sm ${P.partyMode === 'puppet' ? 'on' : ''}" data-pm="puppet">PUPPET-STATE ×1</button></div>
@@ -10387,7 +10433,6 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
         <div class="m-note">OFFLINE BUILD · NO NETWORK REQUIRED<br>${C.BOT_NAMES.length}+ AI COMMANDERS STANDING BY</div>
       </div>
       <div class="m-tr">
-        <span class="scrap"><img class="ico" src="${MP.Icons.url('gear', '#ffd21f', 32)}"> ${U.fmtInt(P.scrap)}</span>
         <button class="btn m-top ${Menu.skillPoints() > 0 ? 'hot' : ''}" id="m-skills">SKILLS${Menu.skillPoints() > 0 ? ' · ' + Menu.skillPoints() : ''}</button><button class="btn m-top" id="m-save" title="Export / import / link your save file">SAVE FILE</button><button class="btn m-top" id="m-ranks">RANKS</button><button class="btn m-top" id="m-shop">ARMORY</button><button class="btn m-top" id="m-fs" title="Toggle fullscreen">⛶</button><button class="btn icon m-top" id="m-settings">${MP.Icons.svgIcon('gear', '#ece6cf', 32)}</button>
       </div>
       <div class="m-center">
@@ -10401,11 +10446,14 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
           </div>
           <div class="m-row"><img class="ico ri" src="${MP.Icons.url(doc.icon === 'flag' ? 'flag' : doc.icon, '#ece6cf', 40)}"><div class="mr-t"><b>${doc.name.toUpperCase()}</b><span>${doc.desc}</span></div><canvas class="lo-prev" width="70" height="40"></canvas><button class="btn" id="m-loadout">LOADOUT</button></div>
           <div class="m-div"><span>OPERATIONS</span></div>
-          <div class="m-row"><img class="ico ri" src="${MP.Icons.url('shield', '#ece6cf', 40)}"><div class="mr-t"><b>TEAMS</b><span><select id="m-teams">${[2, 3, 4].map((t) => `<option value="${t}" ${r.teams === t ? 'selected' : ''}>${t} TEAMS</option>`).join('')}</select> · ${r.bots + 1} NATIONS</span></div><button class="btn" id="m-teams-go">JOIN</button></div>
-          <div class="m-row"><img class="ico ri" src="${MP.Icons.url('gear', '#ece6cf', 40)}"><div class="mr-t"><b>CUSTOM</b><span>MATCH RULES · BOTS · LENGTH · WIN %</span></div><button class="btn" id="m-custom">SET UP</button></div>
-          <div class="m-row"><img class="ico ri" src="${MP.Icons.url('flag', '#ece6cf', 40)}"><div class="mr-t"><b>PRE-SET COUNTRIES</b><span>LEAD A REAL COUNTRY ON REAL BORDERS${P.presetCountry ? ' · ' + U.esc(Menu.countryName(P.presetCountry)) : ''}</span></div><button class="btn" id="m-preset">SET UP</button></div>
-          <div class="m-row alien"><img class="ico ri" src="${MP.Icons.url('orbit', '#7dff5a', 40)}"><div class="mr-t"><b>ALIEN INVASION</b><span>THE VOID ARMADA IS COMING · ${P.alienMap === 'custom' ? 'CUSTOM NATIONS · 5:00 GRACE' : 'PRE-SET COUNTRIES · 0:30 GRACE'}</span></div><button class="btn" id="m-alien">SET UP</button></div>
-          <div class="m-row"><img class="ico ri" src="${MP.Icons.url('radar', '#ece6cf', 40)}"><div class="mr-t"><b>WATCH</b><span>SPECTATE ${Math.min(100, r.bots + 1)} AI NATIONS</span></div><button class="btn" id="m-watch">WATCH</button></div>
+          <div class="ops">
+            <div class="op clickable" id="m-teams-go" role="button"><img class="ico" src="${MP.Icons.url('shield', '#ece6cf', 40)}"><div class="op-t"><b>TEAMS</b><span>ALLIED BLOCS</span></div>
+              <div class="seg" id="m-teams">${[2, 3, 4].map((t) => `<button class="${r.teams === t ? 'on' : ''}" data-tc="${t}">${t}</button>`).join('')}</div></div>
+            <button class="op" id="m-custom"><img class="ico" src="${MP.Icons.url('gear', '#ece6cf', 40)}"><div class="op-t"><b>CUSTOM</b><span>MATCH RULES</span></div></button>
+            <button class="op" id="m-watch"><img class="ico" src="${MP.Icons.url('radar', '#ece6cf', 40)}"><div class="op-t"><b>WATCH</b><span>SPECTATE AI</span></div></button>
+            <button class="op wide" id="m-preset"><img class="ico" src="${MP.Icons.url('flag', '#ece6cf', 40)}"><div class="op-t"><b>PRE-SET COUNTRIES</b><span>${P.presetCountry ? 'LEADING ' + U.esc(Menu.countryName(P.presetCountry)) : 'REAL COUNTRIES · REAL BORDERS'}</span></div></button>
+            <button class="op wide alien" id="m-alien"><img class="ico" src="${MP.Icons.url('orbit', '#7dff5a', 40)}"><div class="op-t"><b>ALIEN INVASION</b><span>${P.alienMap === 'custom' ? 'CUSTOM NATIONS · 5:00 GRACE' : 'PRE-SET COUNTRIES · 0:30 GRACE'}</span></div></button>
+          </div>
         </div>
       </div>
       <div class="m-right">
@@ -10426,7 +10474,12 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     $('m-play').onclick = () => Menu.startMatch(Menu.makeOpts('ffa'));
     $('m-how').onclick = Menu.openHowTo;
     $('m-loadout').onclick = Menu.openLoadouts;
-    $('m-teams').onchange = (e) => { P.rules.teams = Number(e.target.value); Menu.save(); };
+    $('m-teams').onclick = (e) => {
+      e.stopPropagation();
+      const b = e.target.closest('[data-tc]'); if (!b) return;
+      P.rules.teams = Number(b.dataset.tc); Menu.save();
+      $('m-teams').querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+    };
     $('m-teams-go').onclick = () => { MP.Advisor && MP.Advisor.event('menu.teams', {}); Menu.startMatch(Menu.makeOpts('teams')); };
     $('m-custom').onclick = Menu.openCustom;
     $('m-preset').onclick = () => Menu.openOperation('preset');
@@ -10512,7 +10565,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     const d = await MP.Game.hasSave();
     if (!d) { box.innerHTML = ''; return; }
     const mins = Math.floor((d.t - (d.playStart || 0)) / 60);
-    box.innerHTML = `<div class="m-row resume"><img class="ico ri" src="${MP.Icons.url('emp', '#ffd21f', 40)}"><div class="mr-t"><b>RESUME OPERATION</b><span>${d.opts.mode.toUpperCase()} · ${mins} MIN IN · SAVED ${new Date(d.savedAt).toLocaleString()}</span></div><button class="btn primary" id="m-resume-go">RESUME</button><button class="btn sm" id="m-resume-x" title="Discard save">✕</button></div>`;
+    box.innerHTML = `<div class="resume-bar"><img class="ico" src="${MP.Icons.url('emp', '#ffd21f', 40)}"><div class="op-t"><b>RESUME OPERATION</b><span>${U.esc((d.opts.map === 'preset' ? 'PRE-SET ' : '') + d.opts.mode.toUpperCase())} · ${mins} MIN IN · ${new Date(d.savedAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</span></div><button class="btn primary" id="m-resume-go">RESUME</button><button class="btn sm" id="m-resume-x" title="Discard save">✕</button></div>`;
     document.getElementById('m-resume-go').onclick = async () => { Menu.hide(); const ok = await MP.Game.load(); if (!ok) { Menu.show(); } };
     document.getElementById('m-resume-x').onclick = () => { MP.Game.clearSave(); box.innerHTML = ''; };
   };

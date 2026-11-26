@@ -398,8 +398,54 @@ body.watch .hud-bc .buildbar, body.watch .hud-bc .stats, body.watch #h-dock, bod
 .m-row.alien { border-color: rgba(125, 255, 90, .35); }
 .m-row.alien b { color: #b8ff9a; }
 
-/* compact operations list so the whole menu fits shorter screens */
-.m-main { max-height: calc(100vh - 440px); min-height: 220px; overflow-y: auto; }
-.m-main .m-row { padding: 6px 10px; }
-.m-main .m-row .mr-t b { font-size: 15px; }
-@media (max-height: 900px) { #m-adv-slot { min-height: 0; } #advisor-menu canvas { max-height: 200px; } .m-title { font-size: 30px; margin: 4px 0 0; } }
+/* ---------- main menu: everything fits on one screen, no scrolling ---------- */
+.m-center { top: 10px; gap: 4px; }
+#m-adv-slot { min-height: 0; }
+#menu .vsp-menu { gap: 6px; padding-top: 4px; }
+#menu .vsp-frame { width: 216px; height: 216px; }
+#menu .vsp-frame .vsp-cv { width: 200px; height: 200px; }
+#menu .vsp-mline { min-height: 21px; font-size: 14px; }
+#menu .vsp-menu .vsp-hint { display: none; }
+.m-main { gap: 7px; }
+.m-play { padding: 8px 16px; }
+.m-play b { font-size: 28px; }
+.m-row { padding: 7px 10px; }
+.resume-bar { display: flex; align-items: center; gap: 10px; padding: 7px 10px; background: #1d1a0c; border: 1px solid var(--y); }
+.resume-bar .ico { width: 22px; height: 22px; }
+.resume-bar .op-t { flex: 1; }
+.ops { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.op { grid-column: span 2; display: flex; align-items: center; gap: 9px; text-align: left; background: #15130d; border: 1px solid var(--line); padding: 8px 10px; cursor: pointer; min-width: 0; }
+.op.wide { grid-column: span 3; }
+.op:hover { border-color: var(--y); background: #1f1c10; }
+.op .ico { width: 22px; height: 22px; flex: none; }
+.op-t { min-width: 0; flex: 1; }
+.op-t b { display: block; font: 800 14px var(--head); letter-spacing: .06em; white-space: nowrap; }
+.op-t span { display: block; font-size: 9.5px; color: var(--dim); letter-spacing: .06em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.op.alien { border-color: rgba(125, 255, 90, .4); }
+.op.alien b { color: #b8ff9a; }
+.op.alien:hover { border-color: #7dff5a; background: #121a0e; }
+.seg { display: flex; flex: none; }
+.seg button { width: 22px; height: 22px; background: #0d0c08; border: 1px solid var(--line2); color: var(--dim); cursor: pointer; font-size: 11px; padding: 0; margin-left: -1px; }
+.seg button.on { background: var(--y); color: #0a0a08; border-color: var(--y); }
+@media (min-height: 1040px) {
+  #menu .vsp-frame { width: 256px; height: 256px; }
+  #menu .vsp-frame .vsp-cv { width: 240px; height: 240px; }
+  .m-center { top: 16px; gap: 8px; }
+}
+@media (max-height: 820px) {
+  #menu .vsp-frame { width: 166px; height: 166px; }
+  #menu .vsp-frame .vsp-cv { width: 150px; height: 150px; }
+  .m-title { font-size: 28px; margin: 2px 0 0; }
+  .m-play b { font-size: 24px; }
+}
+
+/* thin themed scrollbars wherever something does scroll (modals, lists) */
+* { scrollbar-width: thin; scrollbar-color: #57502f #0d0c08; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: #0d0c08; }
+::-webkit-scrollbar-thumb { background: #3a3524; border: 1px solid #57502f; }
+::-webkit-scrollbar-thumb:hover { background: #57502f; }
+
+.m-card .scrap { color: var(--y); font-size: 11px; font-weight: 700; margin-top: 4px; letter-spacing: .06em; }
+.m-card .scrap .ico { width: 12px; height: 12px; }
+@media (max-width: 1500px) { .m-title { font-size: 26px; letter-spacing: .1em; } .m-top { padding: 8px 10px; } }
