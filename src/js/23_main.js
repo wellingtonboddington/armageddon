@@ -86,13 +86,19 @@
       } else {
         MP.Menu.frame(dt);
       }
-      if (MP.Advisor && MP.Advisor.update) MP.Advisor.update(dt);
     } catch (e) {
       console.error('[loop]', e);
       if (!loop._errShown) { loop._errShown = true; MP.HUD && MP.HUD.toast('Internal error: ' + e.message, 'bad'); setTimeout(() => { loop._errShown = false; }, 5000); }
     }
+    // the advisor runs isolated: a fault there never stops the game (and vice versa)
+    try { if (MP.Advisor && MP.Advisor.update) MP.Advisor.update(dt); } catch (e) { if (!loop._advErr) { loop._advErr = true; console.error('[advisor]', e); } }
     requestAnimationFrame(loop);
   }
+  // last-resort error boundary: log, tell the player once, keep running
+  let errShown = 0;
+  const report = (msg) => { console.error('[MP]', msg); if (Date.now() - errShown > 8000 && MP.HUD && MP.HUD.toast) { errShown = Date.now(); try { MP.HUD.toast('Recovered from an internal error', 'bad'); } catch (e) { /* */ } } };
+  window.addEventListener('error', (e) => report(e && (e.message || e.error)));
+  window.addEventListener('unhandledrejection', (e) => report(e && e.reason));
 
   // auto-pause + save when the tab is hidden (handy for spotty connections / switching apps)
   document.addEventListener('visibilitychange', () => {

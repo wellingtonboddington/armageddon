@@ -19,6 +19,10 @@
       nations: [null],
       owner: new Uint8Array(N),
       softUntil: new Float32Array(N),
+      home: new Uint8Array(N),         // first nation to claim the tile from the wild (its homeland)
+      prevOwner: new Uint8Array(N),    // owner before the latest capture
+      ghostForts: new Map(),           // tile -> {owner, level}: crumbled Trench Warfare forts awaiting recapture
+      capFalls: [],                    // capitals captured this tick (resolved after the land war step)
       structAt: new Map(),     // tile -> struct
       structs: [],
       nextStructId: 1,
@@ -77,9 +81,11 @@
     const d = C.DOCTRINES.find((x) => x.id === n.doctrine);
     if (d) apply(d.mods);
     for (const id of n.directives) { const dr = C.DIRECTIVES.find((x) => x.id === id); if (dr) apply(dr.mods); }
+    for (const id of (n.skills || [])) { const sk = C.SKILLS.find((x) => x.id === id); if (sk) apply(sk.mods); }
     return m;
   };
-  G.mod = (n, k) => (n.mods[k] == null ? 1 : n.mods[k]);
+  G.mod = (n, k) => (n && n.mods && n.mods[k] != null ? n.mods[k] : 1);
+  G.has = (n, k) => !!(n && n.mods && n.mods[k] != null); // flag-style mods (presence = active)
 
   G.alive = () => G.S.nations.filter((n) => n && n.alive && n.spawned);
   G.player = () => G.S.nations.find((n) => n && n.isPlayer) || null;
@@ -143,6 +149,16 @@
     const S = G.S, owner = S.owner, w = World.W;
     const prev = owner[t];
     if (prev === o) { if (soft) G.markSoft(t, soft); return; }
+    let permanent = false;
+    if (o && prev && soft) {
+      const pn = S.nations[prev], on = S.nations[o];
+      if (G.has(on, 'trench')) soft = 0;                                     // trench diggers never hold fresh land
+      else if (G.has(pn, 'scorched')) permanent = true;                        // scorched land never settles
+      else if (G.has(pn, 'trench') || (G.has(pn, 'homeland') && S.home[t] === prev)) soft *= 2;
+      if (soft) soft *= G.mod(on, 'digIn');
+    } else if (o && soft && G.has(S.nations[o], 'trench')) soft = 0;
+    if (prev && o) S.prevOwner[t] = prev;
+    if (o && !prev && !S.home[t]) S.home[t] = o;
     const x = t % w, y = (t / w) | 0;
     if (prev) {
       const p = S.nations[prev];
@@ -154,7 +170,8 @@
       const n = S.nations[o];
       n.tiles++; n.sx += x; n.sy += y; n.sxx += x * x; n.syy += y * y; n.sxy += x * y;
     }
-    if (soft) G.markSoft(t, soft); else S.softUntil[t] = 0;
+    if (permanent) { const was = S.softUntil[t] > S.t; S.softUntil[t] = 1e9; if (!was && MP.Render) MP.Render.dirty(t); }
+    else if (soft) G.markSoft(t, soft); else S.softUntil[t] = 0;
     refreshBorder(t);
     if (x > 0) refreshBorder(t - 1);
     if (x < w - 1) refreshBorder(t + 1);
@@ -163,6 +180,10 @@
     MP.Render && MP.Render.dirty(t);
     const st = S.structAt.get(t);
     if (st) G.structCaptured(st, prev, o);
+    else if (o && S.ghostForts.size) {
+      const gf = S.ghostForts.get(t);
+      if (gf && gf.owner === o) { S.ghostForts.delete(t); const n = S.nations[o]; G.addStruct(n, 'fort', t, { level: gf.level, builtBy: o }); n.levels.fort += gf.level - 1; MP.FX && MP.FX.burst(t % w, (t / w) | 0, [255, 210, 31], 5); }
+    }
     if (prev && S.nations[prev].capital === t) G.capitalLost(prev, o);
   };
 
@@ -210,7 +231,7 @@
     const s = Object.assign({
       id: S.nextStructId++, type, owner: n.id, tile: t, x: t % w, y: (t / w) | 0, level: 1,
       build: 0, buildMax: 0, disabledUntil: 0, ammo: 1, reload: 0, ready: 1, siloT: 0,
-      convoyT: 0, tradeT: 0, born: S.t,
+      convoyT: 0, tradeT: 0, born: S.t, builtBy: n.id,
     }, opts || {});
     S.structs.push(s);
     S.structAt.set(t, s);
@@ -247,9 +268,16 @@
 
   G.structCaptured = function (s, prev, o) {
     const S = G.S;
+    if (s.owner === o) return; // already transferred (e.g. a ceded puppet-state)
     const pn = S.nations[prev];
     if (!o) { G.removeStruct(s); return; }
-    const scorched = pn && G.mod(pn, 'scorched') > 1;
+    const scorched = G.has(pn, 'scorched');
+    if (s.type === 'fort' && G.has(pn, 'trench') && s.builtBy === prev) {   // trench forts crumble, and return with their owner
+      S.ghostForts.set(s.tile, { owner: prev, level: s.level });
+      G.removeStruct(s);
+      MP.FX && MP.FX.burst(s.x, s.y, [180, 160, 120], 5);
+      return;
+    }
     if (scorched || s.type === 'silo' || s.type === 'laser') {
       G.removeStruct(s);
       MP.FX && MP.FX.burst(s.x, s.y, [255, 120, 40], 4);
@@ -310,8 +338,18 @@
       const t = G.nearestOwned(v.id, Math.round(cx), Math.round(cy), 60);
       if (t >= 0) G.setCapital(v, t);
     }
-    G.S.pendingElim = G.S.pendingElim || new Set();
-    if (v.tiles < 40) G.S.pendingElim.add(vid);
+    // a captured capital brings the whole nation down — except Scorched Earth, whose pockets fight on
+    if (a && !G.has(v, 'scorched')) G.S.capFalls.push({ v: vid, by: by });
+  };
+  G.resolveCapFalls = function () {
+    const S = G.S;
+    while (S.capFalls.length) {
+      const f = S.capFalls.shift();
+      const v = S.nations[f.v], a = S.nations[f.by];
+      if (!v || !v.alive) continue;
+      MP.Game.wire('FLASH', `${v.name} COLLAPSES — ITS CAPITAL HAS FALLEN`, v.isPlayer ? 'bad' : 'flash');
+      G.eliminate(f.v, a && a.alive ? f.by : 0);
+    }
   };
   G.setCapital = function (n, t) {
     n.capital = t; n.capX = t % World.W; n.capY = (t / World.W) | 0;

@@ -74,13 +74,22 @@
         pattern: prof.pattern, missileStyle: prof.missile, detonation: prof.detonation, team: teamCount ? 1 : (opts.party && opts.party.length ? 1 : 0) });
       usedNames.add(prof.name);
     }
-    // party partners
-    for (const pt of (opts.party || [])) {
-      if (opts.mode === 'watch') break;
+    // party: up to 2 partner bots (doctrine & spawn assigned by command), or 1 PUPPET-STATE you configure and place
+    const puppetMode = opts.partyMode === 'puppet';
+    const partyList = opts.mode === 'watch' ? [] : (opts.party || []).slice(0, puppetMode ? 1 : C.PARTY_MAX);
+    for (const pt of partyList) {
+      const doctrine = puppetMode ? pt.doctrine : C.DOCTRINES[rng.int(C.DOCTRINES.length)].id;
       const n = G.addNation({ name: pt.name, flag: pt.flag, color: U.mix(prof.color, [255, 255, 255], 0.35 + 0.15 * (S.nations.length % 2)), partner: true,
-        doctrine: pt.doctrine, personality: 'expansionist', difficulty: opts.difficulty, team: player.team || 1 });
+        puppet: puppetMode, doctrine, personality: puppetMode ? 'hawk' : 'expansionist', difficulty: opts.difficulty, team: player.team || 1 });
+      n.donations = 0; n.giftedT = 0; n.giftedC = 0;
       usedNames.add(pt.name);
       MP.AI.init(n);
+      if (puppetMode) S.puppetId = n.id;
+    }
+    if (player) {
+      player.skills = (prof.skills || []).slice();
+      player.mods = G.computeMods(player);
+      player.troops = C.START_TROOPS * G.mod(player, 'startTroops');
     }
     let ni = 0;
     while (S.nations.length - 1 < totalNations) {
@@ -103,7 +112,7 @@
     S.spawnSchedule = [];
     for (let i = 1; i < S.nations.length; i++) {
       const n = S.nations[i];
-      if (n.isPlayer) continue;
+      if (n.isPlayer || n.puppet) continue; // the puppet-state is placed by the player
       S.spawnSchedule.push({ id: n.id, at: 0.5 + rng() * (C.SPAWN_SECONDS - 3) * (n.partner ? 0.6 : 1) });
     }
     S.spawnSchedule.sort((a, b) => a.at - b.at);
@@ -111,7 +120,7 @@
     S.matchSeconds = (opts.minutes || 40) * 60;
     S.peaceSeconds = (opts.peaceMinutes == null ? 5 : opts.peaceMinutes) * 60;
     S.winPct = opts.winPct || C.WIN_PCT;
-    for (const n of S.nations) if (n) n.credits = opts.startCredits != null ? opts.startCredits : C.START_CREDITS;
+    for (const n of S.nations) if (n) n.credits = (opts.startCredits != null ? opts.startCredits : C.START_CREDITS) + (n.isPlayer && G.has(n, 'startCredits') ? 10000 : 0);
     Game.running = true; Game.paused = false; Game.speed = 1;
     MP.Render.resetMatch();
     MP.HUD.startMatch();
@@ -126,9 +135,19 @@
     return S;
   };
 
-  Game.playerSpawn = function (t) {
+  Game.playerSpawn = function (t, moveSelf) {
     const S = G.S, p = G.player();
     if (!p || S.phase !== 'spawn') return false;
+    const pup = S.puppetId ? S.nations[S.puppetId] : null;
+    if (pup && p.spawned && !moveSelf && S.owner[t] !== p.id) {
+      if (!MP.War.validSpawn(t, 14) && S.owner[t] !== pup.id) { Game.toast('Pick open land for your puppet-state', 'bad'); MP.SFX.play('error'); return false; }
+      if (pup.spawned) { for (let i = 0; i < World.N; i++) if (S.owner[i] === pup.id) G.setOwner(i, 0, 0); pup.spawned = false; }
+      MP.War.spawnAt(pup, t);
+      MP.SFX.play('spawn');
+      Game.wire('CABLE', `PUPPET-STATE ${pup.name} ESTABLISHED`, 'good');
+      Game.notify('game.partner_spawned', { name: pup.name });
+      return true;
+    }
     if (!MP.War.validSpawn(t, 14)) {
       // allow respawn on own blob
       if (S.owner[t] !== p.id) { Game.toast('Pick open land away from other nations', 'bad'); MP.SFX.play('error'); return false; }
@@ -169,12 +188,15 @@
     } else if (S.phase === 'play') {
       MP.Eco.tick(dt);
       MP.War.tick(dt);
+      G.resolveCapFalls();
       MP.Naval.tick(dt);
       MP.Weapons.tick(dt);
+      G.resolveCapFalls();
       MP.Diplo.tick(dt);
       MP.Weather.tick(dt);
       MP.AI.tick(dt);
       MP.War.tickPockets();
+      G.resolveCapFalls();
       Game.tickRules(dt);
     }
     G.tickSoft();
@@ -186,6 +208,18 @@
     if (p && !p.spawned) {
       const t = MP.War.randomSpawnTile(S.rng);
       if (t >= 0) { MP.War.spawnAt(p, t); Game.toast('Auto-deployed', 'info'); MP.Render.centerOn(p.capX, p.capY, 5); }
+    }
+    const pup = S.puppetId ? S.nations[S.puppetId] : null;
+    if (pup && !pup.spawned) {
+      // not placed: settle it next to the player
+      let t = -1;
+      for (let k = 0; k < 300 && t < 0; k++) {
+        const a = S.rng() * Math.PI * 2, d = 30 + S.rng() * 60;
+        const c = Math.round(p.capX + Math.cos(a) * d) + Math.round(p.capY + Math.sin(a) * d) * World.W;
+        if (c > 0 && c < World.N && MP.War.validSpawn(c, 12)) t = c;
+      }
+      if (t < 0) t = MP.War.randomSpawnTile(S.rng);
+      if (t >= 0) { MP.War.spawnAt(pup, t); Game.wire('CABLE', `PUPPET-STATE ${pup.name} ESTABLISHED`, 'good'); }
     }
     for (const it of S.spawnSchedule) {
       const n = S.nations[it.id];
@@ -268,19 +302,59 @@
       if (el > 150 && !S.flags.tutSup) { S.flags.tutSup = true; Game.tut('tut.supply'); }
       if (el > 200 && !S.flags.tutAlly && !(S.opts.party && S.opts.party.length)) { S.flags.tutAlly = true; Game.tut('tut.alliance'); }
       if (el > 240 && !S.flags.tutBoat && p.st.port.length === 0) { S.flags.tutBoat = true; Game.tut('tut.boat'); }
-      // win by domination
-      if (pct >= S.winPct) { Game.endMatch('domination'); return; }
     }
-    // last standing / bloc victory
+    // ---- victory: alliances pool their land ----
+    // a solo nation wins at the win %; an alliance (or team) counts its members together, and any bloc
+    // that is not yours reaching the win % ends the match. Your own alliance must take the whole world.
+    const pBloc = p && p.alive ? Game.blocOf(p) : null;
+    const blocTiles = (set) => { let t = 0; for (const id of set) t += S.nations[id].tiles; return t; };
+    if (pBloc) {
+      const bt = blocTiles(pBloc);
+      S.blocPct = 100 * bt / S.landTotal;
+      S.blocSize = pBloc.size;
+      if (pBloc.size === 1) { if (100 * p.tiles / S.landTotal >= S.winPct) { Game.endMatch('domination', p.id); return; } }
+      else {
+        if (S.blocPct >= S.winPct && !S.flags.blocLead) {
+          S.flags.blocLead = true;
+          Game.wire('FLASH', `YOUR ALLIANCE HOLDS ${Math.round(S.blocPct)}% · VICTORY DEMANDS THE WHOLE WORLD`, 'flash');
+          Game.notify('alliance.lead', { text: 'Together we hold the line. Victory still demands every last border.', priority: 1 });
+        }
+        const outside = al.filter((n) => !pBloc.has(n.id));
+        if (!outside.length) { Game.endMatch('alliance', p.id); return; }
+      }
+    }
+    for (const n of al) {
+      if (pBloc && pBloc.has(n.id)) continue;
+      const bloc = Game.blocOf(n);
+      if (pBloc) { let mine = false; for (const id of bloc) if (pBloc.has(id)) { mine = true; break; } if (mine) continue; }
+      if (100 * blocTiles(bloc) / S.landTotal >= S.winPct) {
+        Game.wire('FLASH', `${n.name}${bloc.size > 1 ? ' AND ITS ALLIES' : ''} REACH ${S.winPct}% OF THE WORLD`, 'bad');
+        Game.endMatch(p && p.alive ? 'overrun' : 'eliminated', n.id); return;
+      }
+    }
+    // last standing
     if (al.length <= 1) { Game.endMatch(al[0] && al[0].isPlayer ? 'last' : (p && p.alive ? 'last' : 'eliminated')); return; }
     if (S.opts.mode === 'teams') {
       const teams = new Set(al.map((n) => n.team));
       if (teams.size === 1) { Game.endMatch(p && al[0].team === p.team ? 'alliance' : 'eliminated'); return; }
-    } else if (p && p.alive && al.every((n) => G.isAllied(n.id, p.id))) { Game.endMatch('alliance'); return; }
-    if (Game.matchLeft() <= 0) { Game.endMatch(p && p.alive && al[0] && (al[0].id === p.id || (S.opts.mode === 'teams' && al[0].team === p.team)) ? 'timeout_win' : (p && p.alive ? 'timeout_loss' : 'eliminated')); return; }
+    }
+    if (Game.matchLeft() <= 0) {
+      // the largest bloc holds the field when the hour runs out
+      let best = null, bt = -1;
+      for (const n of al) { const b = Game.blocOf(n); const t = blocTiles(b); if (t > bt) { bt = t; best = b; } }
+      const win = p && p.alive && best && best.has(p.id);
+      Game.endMatch(win ? 'timeout_win' : (p && p.alive ? 'timeout_loss' : 'eliminated')); return;
+    }
     // autosave
     S._saveT = (S._saveT || 0) + 0.5;
     if (S._saveT >= 60 && S.opts.mode !== 'watch') { S._saveT = 0; Game.save(true); }
+  };
+
+  Game.blocOf = function (n) {
+    const S = G.S, set = new Set([n.id]);
+    for (const a of n.allies) { const m = S.nations[a]; if (m && m.alive && m.spawned) set.add(a); }
+    if (n.team) for (const m of S.nations) if (m && m.alive && m.spawned && m.team === n.team) set.add(m.id);
+    return set;
   };
 
   // ---------------- ending ----------------
@@ -292,11 +366,12 @@
     council: { title: 'MIDNIGHT ACCORD', win: null, line: 'end.council', desc: 'The Council ended the war on paper. The largest nation signs first.' },
     winter: { title: 'NUCLEAR WINTER', win: false, line: 'end.winter', desc: 'The clock reached midnight. There is no winner under the ash.' },
     eliminated: { title: 'FALLEN', win: false, line: 'end.defeat', desc: 'Your nation has been erased from the map.' },
+    overrun: { title: 'OUTPACED', win: false, line: 'end.defeat', desc: 'Another power — and its allies — claimed the world first.' },
     timeout_loss: { title: 'OUTLASTED', win: false, line: 'end.timeout_loss', desc: 'You survived the hour — but another nation held more of the world.' },
     resign: { title: 'WITHDRAWAL', win: false, line: 'end.resign', desc: 'You signed the instrument of surrender.' },
   };
 
-  Game.endMatch = function (kind) {
+  Game.endMatch = function (kind, winnerId) {
     const S = G.S;
     if (!S || S.phase === 'over') return;
     S.phase = 'over';
@@ -305,7 +380,7 @@
     let win = Game.ENDINGS[kind].win;
     if (kind === 'council') win = !!(p && p.alive && al[0] && al[0].id === p.id);
     S.ending = kind; S.won = !!win;
-    S.winner = al[0] ? al[0].id : 0;
+    S.winner = winnerId || (al[0] ? al[0].id : 0);
     Game.notify(Game.ENDINGS[kind].line, {});
     MP.SFX.play(kind === 'winter' ? 'winter' : win ? 'victory' : 'defeat');
     MP.SFX.stopAmbient();
@@ -386,12 +461,14 @@
       allies: Array.from(n.allies), truces: Array.from(n.truces.entries()).map(([k, v]) => [k, v - S.t]), embargo: Array.from(n.embargo), wars: Array.from(n.wars),
       traitorUntil: n.traitorUntil - S.t, launches: n.launches, orbitalReady: n.orbitalReady - S.t, launchBanUntil: n.launchBanUntil - S.t,
       stats: n.stats, eliminatedBy: n.eliminatedBy, incomeAvg: n.incomeAvg,
+      puppet: !!n.puppet, skills: n.skills || [], donations: n.donations || 0, giftedT: n.giftedT || 0, giftedC: n.giftedC || 0, targetId: n.targetId || 0,
       grudge: n.ai ? Array.from(n.ai.grudge.entries()) : [],
     });
     return {
       v: 1, savedAt: Date.now(), opts: S.opts, seed: S.seed, rngState: S.rng.state(), t: S.t, phase: S.phase, playStart: S.playStart, spawnEnd: S.spawnEnd,
       matchSeconds: S.matchSeconds, peaceSeconds: S.peaceSeconds, winPct: S.winPct, clock: S.clock, defcon: S.defcon, firstNuke: S.firstNuke,
-      owner: U.rleEncode(S.owner), soft: U.rleEncode(soft), nations,
+      owner: U.rleEncode(S.owner), soft: U.rleEncode(soft), home: U.rleEncode(S.home), prevOwner: U.rleEncode(S.prevOwner), nations,
+      puppetId: S.puppetId || 0, ghostForts: Array.from(S.ghostForts.entries()),
       structs: S.structs.map((s) => ({ id: s.id, type: s.type, owner: s.owner, tile: s.tile, level: s.level, build: s.build, buildMax: s.buildMax,
         disabledUntil: s.disabledUntil - S.t, ammo: s.ammo, reload: s.reload, ready: s.ready, siloT: s.siloT, depositTile: s.depositTile })),
       attacks: S.attacks.filter((a) => !a.done).map((a) => ({ from: a.from, to: a.to, troops: a.troops })),
@@ -422,8 +499,20 @@
   Game.clearSave = function () { del('auto'); };
 
   Game.load = async function () {
-    const d = await get('auto');
+    let d = null;
+    try { d = await get('auto'); } catch (e) { d = null; }
     if (!d || d.v !== 1) return false;
+    try { return Game.loadData(d); } catch (e) {
+      // a save from an older/newer build that no longer fits: discard it instead of breaking the game
+      console.error('[load]', e);
+      Game.clearSave();
+      MP.HUD && MP.HUD.toast('That save is from an incompatible build and was discarded', 'bad');
+      Game.running = false;
+      MP.Menu && MP.Menu.show();
+      return false;
+    }
+  };
+  Game.loadData = function (d) {
     const S = G.create(d.opts);
     for (const dep of World.deposits) { dep.plant = null; dep.owner = 0; }
     S.rng.setState(d.rngState);
@@ -432,7 +521,7 @@
     S.spawnSchedule = [];
     for (const nd of d.nations) {
       if (!nd) continue;
-      const n = G.addNation({ name: nd.name, flag: nd.flag, color: nd.color, isPlayer: nd.isPlayer, isBot: nd.isBot, team: nd.team, partner: nd.partner,
+      const n = G.addNation({ name: nd.name, flag: nd.flag, color: nd.color, isPlayer: nd.isPlayer, isBot: nd.isBot, team: nd.team, partner: nd.partner, puppet: !!nd.puppet, skills: nd.skills || [],
         personality: nd.personality, difficulty: nd.difficulty, doctrine: nd.doctrine, directives: nd.directives || [], pattern: nd.pattern,
         missileStyle: nd.missileStyle, detonation: nd.detonation });
       n.alive = nd.alive; n.spawned = nd.spawned; n.troops = nd.troops; n.credits = nd.credits; n.uranium = nd.uranium;
@@ -440,10 +529,15 @@
       n.truces = new Map(nd.truces.map(([k, v]) => [k, v + S.t]));
       n.traitorUntil = nd.traitorUntil + S.t; n.launches = nd.launches; n.orbitalReady = nd.orbitalReady + S.t; n.launchBanUntil = nd.launchBanUntil + S.t;
       n.stats = nd.stats; n.eliminatedBy = nd.eliminatedBy; n.incomeAvg = nd.incomeAvg || C.BASE_INCOME;
+      n.donations = nd.donations || 0; n.giftedT = nd.giftedT || 0; n.giftedC = nd.giftedC || 0; n.targetId = nd.targetId || 0;
       if (!n.isPlayer) { MP.AI.init(n); n.ai.grudge = new Map(nd.grudge || []); }
     }
     G.initRelations();
     if (d.relN === S.relN) S.relations.set(d.relations);
+    S.puppetId = d.puppetId || 0;
+    if (d.home) S.home.set(U.rleDecode(d.home, World.N));
+    if (d.prevOwner) S.prevOwner.set(U.rleDecode(d.prevOwner, World.N));
+    if (d.ghostForts) S.ghostForts = new Map(d.ghostForts);
     const owner = U.rleDecode(d.owner, World.N);
     const soft = U.rleDecode(d.soft, World.N);
     for (let t = 0; t < World.N; t++) if (owner[t]) G.setOwner(t, owner[t], soft[t] || 0);

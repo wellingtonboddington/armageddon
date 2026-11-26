@@ -87,13 +87,20 @@
       if (opp.troops < 1) opp.done = true;
       if (troops < 1) return opp;
     }
+    const fx = opts && opts.fx != null ? opts.fx : null, fy = opts && opts.fy != null ? opts.fy : null;
     if (at && !(opts && opts.seed != null)) {
       at.troops += troops; at.initial += troops;
+      if (fx != null) {
+        // re-clicking near the same mark concentrates harder; a new mark shifts the weight of the assault
+        const near = at.fx != null && U.dist2(at.fx, at.fy, fx, fy) < 900;
+        at.fx = fx; at.fy = fy; at.press = Math.min(1, (near ? at.press : at.press * 0.5) + 0.3);
+      }
       War.refreshFrontier(at);
       return at;
     }
     at = { id: S.nextAttackId++, from, to, troops, initial: troops, front: [], inFront: new Set(), budget: 0, done: false,
-      boat: !!(opts && opts.boat), started: S.t, captured: 0, idle: 0, def: 0, defPeak: 0, defNext: S.t + 1.5 + S.rng() * 2.5 };
+      boat: !!(opts && opts.boat), started: S.t, captured: 0, idle: 0, def: 0, defPeak: 0, defNext: S.t + 1.5 + S.rng() * 2.5,
+      fx, fy, press: fx != null ? 0.5 : 0 };
     S.attacks.push(at);
     if (opts && opts.seed != null) War.seedFrom(at, opts.seed); else War.refreshFrontier(at);
     if (to) War.declareWar(from, to);
@@ -150,16 +157,23 @@
     for (const t of a.border) for (const u of neighbors(t)) War.pushFront(at, u);
   };
 
-  function fortFactor(defId, x, y) {
-    if (!defId) return 1;
-    const d = G.S.nations[defId];
+  // number of fort layers protecting (x,y) for defender defId against attacker atkId (0 = none)
+  function fortFactor(defId, x, y, atkId) {
+    if (!defId) return 0;
+    const S = G.S, d = S.nations[defId];
+    const homeReclaim = atkId && G.has(S.nations[atkId], 'homeland') && S.home[x + y * World.W] === atkId;
+    let n = 0;
+    const rm = G.mod(d, 'fortRadius');
     for (const f of d.st.fort) {
       if (!G.isActive(f)) continue;
-      const r = C.FORT_RADIUS * Math.pow(2, f.level - 1);
-      if (U.dist2(f.x, f.y, x, y) <= r * r) return 1;
+      if (homeReclaim && f.builtBy === atkId) continue; // Homeland walks straight through forts it built itself
+      const r = C.FORT_RADIUS * Math.pow(2, f.level - 1) * rm;
+      if (U.dist2(f.x, f.y, x, y) <= r * r) { n++; if (n >= 2) break; }
     }
-    return 0;
+    if (S.tempForts) for (const tf of S.tempForts) if (tf.owner === defId && tf.until > S.t && U.dist2(tf.x, tf.y, x, y) <= tf.r * tf.r) n++;
+    return Math.min(2, n);
   }
+  War.fortFactor = fortFactor;
 
   War.supplyDist = function (n, x, y) {
     let best = n.capital >= 0 ? U.dist2(n.capX, n.capY, x, y) : 1e12;
@@ -178,7 +192,21 @@
       if (!G.isSoft(t) && !MP.Weapons.inFallout(x, y)) cost *= C.DUG_IN_MULT;
       cost += (d.troops / Math.max(1, d.tiles)) * C.DENSITY_COST;
       cost *= G.mod(d, 'defendCost');
-      if (fortFactor(at.to, x, y)) { cost *= C.FORT_COST_MULT; slow *= C.FORT_SLOW; }
+      const ff = fortFactor(at.to, x, y, at.from);
+      if (ff) { cost *= C.FORT_COST_MULT * (ff > 1 ? 1.5 : 1); slow *= C.FORT_SLOW * (ff > 1 ? 1.3 : 1); }
+      // Homeland reclaiming its own soil: 25% cheaper, 3× faster
+      if (G.has(a, 'homeland') && S.home[t] === at.from) { cost *= 0.75; slow /= 3; }
+      // Scorched Earth retaking burnt land it once held: half price
+      if (G.has(a, 'scorched') && S.prevOwner[t] === at.from && G.isSoft(t)) cost *= 0.5;
+      // Blitzkrieg without numbers bleeds
+      if (G.has(a, 'blitzkrieg') && at.troops < at.def + (d.troops / Math.max(1, d.tiles)) * Math.min(at.front.length, 400) * 0.5) cost *= 1.5;
+    }
+    // concentrated forces near the clicked mark: cheaper and faster there, thinner elsewhere
+    if (at.fx != null && at.press > 0) {
+      const dd = Math.hypot(x - at.fx, y - at.fy);
+      const near = Math.exp(-dd / 45);
+      cost *= 1 - 0.22 * at.press * near + 0.12 * at.press * (1 - near);
+      slow *= 1 - 0.35 * at.press * near;
     }
     cost *= G.mod(a, 'attackCost');
     // supply lines
@@ -199,6 +227,7 @@
       if (!a.alive) { at.done = true; continue; }
       if (at.to && (!S.nations[at.to].alive || !G.canAttack(at.from, at.to))) { War.finish(at, true); continue; }
       if (at.to && S.t >= at.defNext) War.aiDefend(at);
+      if (at.press > 0) at.press = Math.max(0.15, at.press - 0.01 * dt);
       let speed = (C.ATTACK_SPEED_BASE + Math.sqrt(Math.max(0, at.troops)) * C.ATTACK_SPEED_SQRT) * G.mod(a, 'attackSpeed');
       if (!at.to) speed *= C.EXPAND_SPEED_MULT;
       at.budget += speed * dt;
@@ -211,7 +240,20 @@
           if (!at.front.length) { War.finish(at, true); break; }
           continue;
         }
-        const k = S.rng.int(at.front.length);
+        let k = S.rng.int(at.front.length);
+        if (at.fx != null && at.press > 0.02 && at.front.length > 2) {
+          // tournament pick: more pressure (and Blitzkrieg / Spearhead) = stronger pull toward the mark
+          const tries = 1 + Math.round(at.press * 5 * G.mod(a, 'breakthrough'));
+          const W0 = World.W;
+          let bd = 1e18;
+          for (let q = 0; q < tries; q++) {
+            const kk = q === 0 ? k : S.rng.int(at.front.length);
+            const tt = at.front[kk], tx = tt % W0, ty = (tt / W0) | 0;
+            let sc = (tx - at.fx) * (tx - at.fx) + (ty - at.fy) * (ty - at.fy);
+            if (at.to && fortFactor(at.to, tx, ty, at.from)) sc += 3600; // seek the gaps between forts
+            if (sc < bd) { bd = sc; k = kk; }
+          }
+        }
         const t = at.front[k];
         at.front[k] = at.front[at.front.length - 1]; at.front.pop(); at.inFront.delete(t);
         if (owner[t] !== at.to || !World.land[t]) continue;
@@ -291,7 +333,8 @@
   War.pocketCursor = 1;
   War.tickPockets = function () {
     const S = G.S;
-    if (S.pockets) for (let i = S.pockets.length - 1; i >= 0; i--) if (S.t - S.pockets[i].seen > 16 || !S.nations[S.pockets[i].nation].alive) S.pockets.splice(i, 1);
+    if (S.pockets) for (let i = S.pockets.length - 1; i >= 0; i--) if (S.t - S.pockets[i].seen > (S.pockets[i].breakout ? 80 : 16) || !S.nations[S.pockets[i].nation].alive) S.pockets.splice(i, 1);
+    if (S.tempForts) for (let i = S.tempForts.length - 1; i >= 0; i--) if (S.tempForts[i].until <= S.t) S.tempForts.splice(i, 1);
     const nn = S.nations.length;
     for (let tries = 0; tries < nn; tries++) {
       War.pocketCursor = War.pocketCursor % (nn - 1) + 1;
@@ -345,8 +388,28 @@
       let pk = S.pockets.find((q) => q.nation === id && U.dist2(q.x, q.y, cx, cy) < 900);
       const notable = c.size >= 25 || (n.isPlayer && c.size >= 8);
       if (!pk && notable) {
-        S.pockets.push({ nation: id, by: best, x: cx, y: cy, troops: trapped, size: c.size, seen: S.t, annexAt: S.t + 7 });
         const byN = S.nations[best];
+        const delay = 7 * (G.has(byN, 'blitzkrieg') ? 0.75 : 1) * (G.has(byN, 'pincer') ? 0.6 : 1);
+        pk = { nation: id, by: best, x: cx, y: cy, troops: trapped, size: c.size, seen: S.t, annexAt: S.t + delay };
+        S.pockets.push(pk);
+        // Call for the Motherland: encircled troops on home soil dig in like a fort and break out toward the main force
+        let homeTiles = 0; for (const t of c.tiles) if (S.home[t] === id) homeTiles++;
+        if (G.has(n, 'motherland') && homeTiles > c.size * 0.6) {
+          let ownFort = false;
+          for (const f of n.st.fort) if (U.dist2(f.x, f.y, cx, cy) < 70 * 70) { ownFort = true; break; }
+          S.tempForts = S.tempForts || [];
+          S.tempForts.push({ owner: id, x: cx, y: cy, r: Math.max(10, Math.sqrt(c.size) * 1.3) * (ownFort ? 1.4 : 1), until: S.t + 75 });
+          pk.breakout = true; pk.annexAt = S.t + 75;
+          // the pocket pushes back toward the capital
+          let seed = -1, bd = 1e18;
+          for (let q = 0; q < c.tiles.length; q += Math.max(1, Math.floor(c.tiles.length / 60))) {
+            const t = c.tiles[q]; const d2 = U.dist2(t % w, (t / w) | 0, n.capX, n.capY);
+            if (d2 < bd) { bd = d2; seed = t; }
+          }
+          if (seed >= 0) { const nb = neighbors(seed).find((u) => u >= 0 && owner[u] === best); if (nb != null) War.launch(id, best, Math.max(trapped, 500), { seed: nb, fx: n.capX, fy: n.capY }); }
+          if (n.isPlayer) { MP.Game.wire('IMINT', `CALL FOR THE MOTHERLAND — ${U.fmtInt(trapped)} TROOPS BREAK OUT`, 'good'); MP.SFX.play('milestone'); }
+          continue;
+        }
         if (n.isPlayer) { MP.Game.notify('pocket.cut', {}); MP.Game.wire('IMINT', `${U.fmtInt(trapped)} OF YOUR TROOPS ENCIRCLED BY ${byN.name}`, 'bad'); }
         else if (byN && byN.isPlayer) MP.Game.wire('IMINT', `${U.fmtInt(trapped)} ${n.name} TROOPS ENCIRCLED`, 'good');
         continue;
@@ -354,6 +417,7 @@
       if (pk) {
         pk.seen = S.t; pk.troops = trapped; pk.x = cx; pk.y = cy; pk.by = best; pk.size = c.size;
         if (S.t < pk.annexAt) continue;
+        if (pk.breakout) { S.pockets.splice(S.pockets.indexOf(pk), 1); continue; } // the breakout window closed; re-evaluate next pass
         S.pockets.splice(S.pockets.indexOf(pk), 1);
       }
       for (const t of c.tiles) G.setOwner(t, best, C.DUG_IN_SECONDS);

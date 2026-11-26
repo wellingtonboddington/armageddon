@@ -612,26 +612,62 @@
     ctx.fillText(text, sx, sy + 0.5);
   }
 
-  // front-line geometry (centre, along-front angle, normal pointing at the attacker), cached briefly
+  // front-line geometry (centre, along-front angle, normal pointing at the attacker), cached briefly.
+  // With a clicked point of main effort, the geometry follows the part of the front nearest to it.
   function frontGeom(at) {
-    if (at._g && timeNow - at._g.t < 0.35) return at._g;
+    if (at._g && timeNow - at._g.t < 0.35 && at._g.z === cam.z) return at._g;
     const S = G.S, W = World.W, f = at.front;
     if (!f.length) return null;
-    const step = Math.max(1, Math.floor(f.length / 90));
-    const xs = [], ys = [];
+    const step = Math.max(1, Math.floor(f.length / 240));
+    let pts = [];
+    for (let i = 0; i < f.length; i += step) { const t = f[i]; pts.push([t % W, (t / W) | 0]); }
+    if (at.fx != null && at.press > 0.1 && pts.length > 12) {
+      pts.sort((a, b) => ((a[0] - at.fx) ** 2 + (a[1] - at.fy) ** 2) - ((b[0] - at.fx) ** 2 + (b[1] - at.fy) ** 2));
+      pts = pts.slice(0, Math.max(10, Math.round(pts.length * 0.4)));
+    }
     let mx = 0, my = 0;
-    for (let i = 0; i < f.length; i += step) { const t = f[i]; const x = t % W, y = (t / W) | 0; xs.push(x); ys.push(y); mx += x; my += y; }
-    const c = xs.length; mx /= c; my /= c;
+    for (const q of pts) { mx += q[0]; my += q[1]; }
+    const c = pts.length; mx /= c; my /= c;
     let cxx = 0, cyy = 0, cxy = 0;
-    for (let i = 0; i < c; i++) { const dx = xs[i] - mx, dy = ys[i] - my; cxx += dx * dx; cyy += dy * dy; cxy += dx * dy; }
+    for (const q of pts) { const dx = q[0] - mx, dy = q[1] - my; cxx += dx * dx; cyy += dy * dy; cxy += dx * dy; }
     const ang = 0.5 * Math.atan2(2 * cxy, cxx - cyy);
     const a = S.nations[at.from];
     let nx = -Math.sin(ang), ny = Math.cos(ang);
-    const ax = a && a.tiles ? a.sx / a.tiles : mx, ay = a && a.tiles ? a.sy / a.tiles : my;
-    if ((ax - mx) * nx + (ay - my) * ny < 0) { nx = -nx; ny = -ny; }
+    // point the normal at the attacker using local ownership, not the (possibly far) centroid
+    const probe = (k) => { const x = Math.round(mx + nx * k), y = Math.round(my + ny * k); return x >= 0 && y >= 0 && x < W && y < World.H ? S.owner[x + y * W] : -1; };
+    let sA = 0; for (let k = 1; k <= 6; k++) { if (probe(k) === at.from) sA++; if (probe(-k) === at.from) sA--; }
+    if (sA < 0 || (sA === 0 && a && a.tiles && ((a.sx / a.tiles - mx) * nx + (a.sy / a.tiles - my) * ny) < 0)) { nx = -nx; ny = -ny; }
     let la = ang; if (la > Math.PI / 2) la -= Math.PI; if (la < -Math.PI / 2) la += Math.PI;
-    at._g = { t: timeNow, x: mx, y: my, ang: la, nx, ny };
+    at._g = { t: timeNow, z: cam.z, x: mx, y: my, ang: la, nx, ny, fits: {} };
     return at._g;
+  }
+
+  // find a spot where the whole number sits inside `owner`'s land (never spilling over the border)
+  function fitInside(g, side, owner, text, px) {
+    const key = side + '|' + text.length + '|' + Math.round(px);
+    if (g.fits[key] !== undefined) return g.fits[key];
+    const S = G.S, W = World.W;
+    ctx.font = `800 ${px}px ${MP.FONT_HEAD}`;
+    const wT = ctx.measureText(text).width / cam.z + 1, hT = px / cam.z + 0.6;
+    const ux = Math.cos(g.ang), uy = Math.sin(g.ang), vx = -uy, vy = ux;
+    const nx = g.nx * side, ny = g.ny * side;
+    const inside = (cx, cy) => {
+      for (let i = -2; i <= 2; i++) for (let j = -1; j <= 1; j += 2) {
+        const x = Math.round(cx + ux * wT * 0.25 * i + vx * hT * 0.5 * j), y = Math.round(cy + uy * wT * 0.25 * i + vy * hT * 0.5 * j);
+        if (x < 0 || y < 0 || x >= W || y >= World.H || S.owner[x + y * W] !== owner) return false;
+      }
+      return true;
+    };
+    let res = null;
+    const d0 = hT * 0.55 + 0.8;
+    outer: for (let d = d0; d < d0 + 40; d += Math.max(0.8, hT * 0.25)) {
+      for (const sh of [0, 0.6, -0.6, 1.2, -1.2]) {
+        const cx = g.x + nx * d + ux * wT * sh, cy = g.y + ny * d + uy * wT * sh;
+        if (inside(cx, cy)) { res = [cx, cy]; break outer; }
+      }
+    }
+    g.fits[key] = res;
+    return res;
   }
 
   function frontNumber(x, y, ang, text, px, fill, accent) {
@@ -643,8 +679,13 @@
     ctx.strokeStyle = 'rgba(4,4,3,0.85)'; ctx.lineWidth = Math.max(3, px * 0.22);
     ctx.strokeText(text, 0, 0);
     ctx.fillStyle = fill; ctx.fillText(text, 0, 0);
-    if (accent) { const w = ctx.measureText(text).width; ctx.fillStyle = accent; ctx.fillRect(-w / 2, px * 0.58, w, Math.max(1.5, px * 0.09)); }
+    if (accent) { const w = ctx.measureText(text).width; ctx.fillStyle = accent; ctx.fillRect(-w / 2, px * 0.5, w, Math.max(1.5, px * 0.08)); }
     ctx.restore();
+  }
+  function placeNumber(g, side, owner, text, px, fill, accent) {
+    let pos = fitInside(g, side, owner, text, px), size = px;
+    if (!pos) { size = px * 0.72; pos = fitInside(g, side, owner, text, size); }
+    if (pos) frontNumber(pos[0], pos[1], g.ang, text, size, fill, accent);
   }
 
   function drawAttacks() {
@@ -664,13 +705,25 @@
           const t = at.front[i]; const [fx, fy] = R.w2s(t % World.W, (t / World.W) | 0); ctx.fillRect(fx, fy, sz, sz);
         }
       }
-      const off = (fs * 0.85) / cam.z + 1.2;
       const an = S.nations[at.from], dn = at.to ? S.nations[at.to] : null;
-      // the attacker's committed troops — on the attacker's side of the line
-      frontNumber(g.x + g.nx * off, g.y + g.ny * off, g.ang, U.fmtInt(at.troops), fs,
-        onUs ? '#ffc2b8' : '#ffffff', an ? U.rgb(an.color) : null);
-      // defenders show a number only once they commit troops to this front
-      if (dn && at.def > 0) frontNumber(g.x - g.nx * off, g.y - g.ny * off, g.ang, U.fmtInt(at.def), fs * 0.9, mine ? '#ffc2b8' : '#ffffff', U.rgb(dn.color));
+      // the attacker's committed troops — strictly inside the attacker's land, where the effort is concentrated
+      placeNumber(g, 1, at.from, U.fmtInt(at.troops), fs, onUs ? '#ffc2b8' : '#ffffff', an ? U.rgb(an.color) : null);
+      // defenders show a number only once they commit troops — strictly inside the defender's land
+      if (dn && at.def > 0) placeNumber(g, -1, at.to, U.fmtInt(at.def), fs * 0.92, mine ? '#ffc2b8' : '#ffffff', U.rgb(dn.color));
+    }
+    // breakout zones (Call for the Motherland)
+    if (S.tempForts) for (const tf of S.tempForts) {
+      if (!onScreen(tf.x, tf.y, tf.r * cam.z + 20)) continue;
+      const [sx, sy] = R.w2s(tf.x, tf.y);
+      ctx.save(); ctx.strokeStyle = 'rgba(255,210,31,0.85)'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]); ctx.lineDashOffset = timeNow * 10;
+      ctx.beginPath(); ctx.arc(sx, sy, tf.r * cam.z, 0, 7); ctx.stroke(); ctx.restore();
+    }
+    if (p && S.ghostForts && S.ghostForts.size && cam.z > 1.5) for (const [t, gf] of S.ghostForts) {
+      if (gf.owner !== p.id) continue;
+      const x = t % World.W, y = (t / World.W) | 0;
+      if (!onScreen(x, y)) continue;
+      const [sx, sy] = R.w2s(x + 0.5, y + 0.5);
+      ctx.globalAlpha = 0.45; MP.Icons.drawGlyph(ctx, 'fort', sx - 7, sy - 7, 14, '#c9b88a'); ctx.globalAlpha = 1;
     }
     // encircled pockets
     if (S.pockets) for (const pk of S.pockets) {
@@ -686,7 +739,7 @@
       ctx.restore();
       ctx.font = `700 ${U.clamp(fs * 0.8, 10, 17)}px ${MP.FONT_HEAD}`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.lineJoin = 'round';
-      const txt = U.fmtInt(pk.troops) + ' Encircled';
+      const txt = U.fmtInt(pk.troops) + (pk.breakout ? ' Breaking Out' : ' Encircled');
       ctx.strokeStyle = 'rgba(4,4,3,0.85)'; ctx.lineWidth = 3; ctx.strokeText(txt, sx, sy - r - 3);
       ctx.fillStyle = pk.nation === p?.id ? '#ff8a7a' : 'rgba(236,230,207,0.92)'; ctx.fillText(txt, sx, sy - r - 3);
     }

@@ -91,9 +91,12 @@
     const pers = C.PERSONALITIES[n.personality] || C.PERSONALITIES.opportunist;
     const fill = n.troops / Math.max(1, n.cap);
 
+    // a puppet-state never outgrows its master
+    const master = n.puppet ? G.player() : null;
+    const capped = !!(master && master.alive && n.tiles >= master.tiles * 0.9);
     // ---------------- expansion into unclaimed land ----------------
     const myAttacks = S.attacks.filter((a) => a.from === n.id && !a.done);
-    if (ai.unclaimed && fill > 0.22 && !myAttacks.some((a) => a.to === 0)) {
+    if (!capped && ai.unclaimed && fill > 0.22 && !myAttacks.some((a) => a.to === 0)) {
       const early = S.t < 240;
       MP.War.launch(n.id, 0, n.troops * (early ? 0.4 : 0.25));
     }
@@ -103,7 +106,7 @@
 
     // ---------------- research ----------------
     if (!n.researching && S.phase === 'play') {
-      const want = pers.nuke * (C.DIFFICULTY[n.difficulty].nukeMul);
+      const want = n.puppet ? 1.6 : pers.nuke * (C.DIFFICULTY[n.difficulty].nukeMul);
       for (const w of C.WEAPON_ORDER) {
         if (n.research[w]) continue;
         if (S.defcon > C.WEAPON[w].defcon) continue;
@@ -115,11 +118,13 @@
     }
 
     // ---------------- land war ----------------
-    if (S.t - ai.lastAttack > 4 && fill > 0.5 - pers.aggro * 0.15) {
+    if (!capped && S.t - ai.lastAttack > (n.puppet && ai.focus ? 2 : 4) && fill > (n.puppet && ai.focus ? 0.2 : 0.5 - pers.aggro * 0.15)) {
       const target = AI.pickTarget(n, pers);
       if (target) {
         const ratio = 0.22 + pers.aggro * 0.3;
-        MP.War.launch(n.id, target.id, n.troops * ratio);
+        // aim the assault: at their capital, or a weak point between forts
+        const aim = AI.attackAim(n, target);
+        MP.War.launch(n.id, target.id, n.troops * ratio, aim ? { fx: aim[0], fy: aim[1] } : null);
         ai.lastAttack = S.t; ai.target = target.id;
       } else if (!ai.unclaimed && ai.neighbors.size === 0 && S.t - ai.lastBoat > 25 && fill > 0.45) {
         AI.boatAttack(n);
@@ -256,6 +261,14 @@
     MP.Naval.launchTransport(n, best, n.troops * 0.3);
   };
 
+  AI.attackAim = function (n, e) {
+    const S = G.S;
+    if (S.rng() < 0.5 && e.capital >= 0) return [e.capX, e.capY];
+    const arr = e.st.city.length ? e.st.city : null;
+    if (arr) { const c = arr[S.rng.int(arr.length)]; return [c.x, c.y]; }
+    return e.capital >= 0 ? [e.capX, e.capY] : null;
+  };
+
   AI.boatAttackOn = function (n, f) {
     const S = G.S, W = World.W;
     n.ai.lastBoat = S.t;
@@ -283,6 +296,7 @@
     const late = S.clock < 90;
     let target = 0, reason = '';
     if (ai.retaliate && S.nations[ai.retaliate] && S.nations[ai.retaliate].alive) { target = ai.retaliate; reason = 'retaliate'; }
+    else if (n.puppet && ai.focus && S.nations[ai.focus] && S.nations[ai.focus].alive && S.t - ai.lastNuke > 20) { target = ai.focus; reason = 'master'; }
     else if (!late && S.t - ai.lastNuke > 110 / (pers.nuke * nukeMul) && S.rng() < 0.07 * pers.nuke * nukeMul) {
       // strike a stronger enemy we're at war with, or a grudge
       let bs = 0;
@@ -298,7 +312,7 @@
       reason = 'war';
     }
     if (!target) return;
-    if (late && reason !== 'retaliate') return;
+    if (late && reason !== 'retaliate' && reason !== 'master') return;
     if (S.clock < 45 && pers.nuke < 1.1) { ai.retaliate = 0; return; }
     const e = S.nations[target];
     // choose weapon: strongest available & affordable
@@ -311,7 +325,7 @@
       const chk = MP.Weapons.canLaunch(n, w, aim[0], aim[1]);
       if (!chk.ok) continue;
       // keep a reserve unless retaliating
-      if (reason !== 'retaliate' && n.credits - chk.cost.credits < 5000) continue;
+      if (reason === 'war' && n.credits - chk.cost.credits < 5000) continue;
       MP.Weapons.launch(n, w, aim[0], aim[1]);
       ai.lastNuke = S.t;
       if (reason === 'retaliate' && S.rng() < 0.6) ai.retaliate = 0;

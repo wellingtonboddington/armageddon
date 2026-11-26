@@ -1272,7 +1272,17 @@
    * ======================================================================================= */
   const synth = (function () { try { return window.speechSynthesis || null; } catch (e) { return null; } })();
   const SSU = typeof window.SpeechSynthesisUtterance === 'function' ? window.SpeechSynthesisUtterance : null;
-  const TTS = { ok: !!(synth && SSU), voices: [], voice: null, tune: null, fails: 0, broken: false, blocked: false, gesture: false, utter: [], keepAlive: 0 };
+  const TTS = { ok: !!(synth && SSU), voices: [], voice: null, tune: null, fails: 0, broken: false, blocked: false, gesture: false, utter: [], keepAlive: 0, bad: new Set(), brokenAt: 0 };
+  // a voice that failed is benched and the next best (local) voice takes over; nothing is ever disabled for good
+  function benchVoice(reason) {
+    try {
+      if (TTS.voice) TTS.bad.add(TTS.voice.name);
+      if (TTS.bad.size >= TTS.voices.length) TTS.bad.clear();
+      pickVoice();
+      warn('voice benched (' + reason + '), now using ' + (TTS.voice && TTS.voice.name));
+    } catch (e) { /* ignore */ }
+  }
+  function markBroken() { TTS.broken = true; TTS.brokenAt = nowS(); }
   const FEMALE_RX = /\b(female|woman|samantha|victoria|karen|moira|tessa|fiona|serena|zira|hazel|susan|aria|jenny|libby|sonia|natasha|clara|emma|ava|allison|kate|kathy|vicki|veena|zoe|zoey|nicky|agnes|martha|catherine|heera|linda|eva|cortana|michelle|ana|ashley|cora|elizabeth|jane|nancy|sara|sarah|amber|monica|maisie|hollie|bella|abbi|olivia|mia|neerja|leah|emily|molly|annette|freya|elsie|joanna|kimberly|salli|kendra|ivy|nicole|amy|ruth|isla|imogen|alice|anna|helena|laura|lucia|paulina|yuna|tingting|sinji|kyoko|ellen|nora|alva|satu|zuzana|mariska|ioana|melina|carmit|lekha|damayanti|kanya|lana|yelda|milena|stephanie|shelley|sandy|flo|grandma|princess)\b/i;
   const MALE_RX = /\b(male|man|david|mark|george|daniel|alex|fred|ryan|guy|thomas|oliver|james|brian|arthur|rishi|aaron|gordon|lee|tom|junior|ralph|albert|bruce|eddy|reed|rocko|grandpa|christopher|eric|roger|steffan|william|liam|connor|andrew|brandon|davis|jason|tony|ravi|prabhat|sean|mitchell|ken|luke|noah|elliot|ethan|harry|jacob|kai|neil|duncan|aarav|jorge|diego|juan|carlos|xander|maged|tarik|yuri|aleksandr|felix|hemant|rafael)\b/i;
   const NOVELTY_RX = /\b(albert|bad news|bahh|bells|boing|bubbles|cellos|good news|jester|organ|superstar|trinoids|whisper|wobble|zarvox|deranged|hysterical|princess|grandma|grandpa)\b/i;
@@ -1294,10 +1304,10 @@
     else if (/^en-(au|ie|nz|ca|za)/.test(lang)) s += 18; else if (lang.indexOf('en-in') === 0) s += 14;
     else if (lang.indexOf('en') === 0) s += 12; else s -= 100;
     const g = gender(v); if (g === true) s += 60; else if (g === false) s -= 90;
-    if (/natural|neural|premium|enhanced/i.test(n)) s += 14;
-    if (/online/i.test(n)) s += 4;
-    if (v.localService) s += 6;
-    if (/google/i.test(n)) s += 5;
+    // OFFLINE FIRST: network voices ("Online", most "Google …" voices) stall or fail without internet
+    if (v.localService) s += 45; else s -= 30;
+    if (/natural|neural|premium|enhanced/i.test(n) && v.localService) s += 14;
+    if (TTS.bad && TTS.bad.has(n)) s -= 1000;
     if (/google uk english female|sonia|libby|serena|hazel/i.test(n)) s += 10;   // composed British reads suit her
     if (/aria|jenny|samantha|kate/i.test(n)) s += 6;
     if (/espeak|festival|\+f\d/i.test(n)) s -= 10;                              // robotic synths: last resort
@@ -1324,6 +1334,7 @@
     const want = sget('advisor.voiceName', null);
     let v = null;
     if (want) for (const x of TTS.voices) if (x.name === want) { v = x; break; }
+    if (v && TTS.bad && TTS.bad.has(v.name)) v = null;
     TTS.voice = v || autoVoice(TTS.voices);
     TTS.tune = tuneFor(TTS.voice);
   }
@@ -1355,6 +1366,8 @@
   }
   function hostMuted() { try { return !!(MP.audio && MP.audio.isMuted && MP.audio.isMuted()); } catch (e) { return false; } }
   function canSpeak() {
+    if (TTS.broken && nowS() - TTS.brokenAt > 20) { TTS.broken = false; TTS.fails = 0; } // self-heal: try again later
+    if (TTS.ok && !TTS.voices.length) loadVoices();
     return S.voice && TTS.ok && !!TTS.voice && !TTS.broken && !TTS.blocked && userActivated() && !hostMuted() && S.volume > 0.001;
   }
   function ttsVolume() {
@@ -1392,8 +1405,9 @@
         if (cur !== item) return;
         const er = (e && e.error) || '';
         if (er === 'interrupted' || er === 'canceled') { item.speechDone = true; return; }
-        if (er === 'not-allowed') TTS.blocked = true; else TTS.fails++;
-        if (TTS.fails >= 3) TTS.broken = true;
+        if (er === 'not-allowed') TTS.blocked = true;
+        else { TTS.fails++; if (/network|synthesis|voice|language|audio/.test(er)) benchVoice(er); }
+        if (TTS.fails >= 4) markBroken();
         item.speechDone = true;
         if (!item.speechStarted) toTextMode(item, true);
       };
@@ -1585,9 +1599,12 @@
     const it = cur; if (!it || it.state !== 'typing') return;
     let el = t - it.lastT; it.lastT = t; if (el > 0.25) el = 0.25;
     if (it.mode === 'voice') {
-      if (!it.speechStarted && t - it.speechAt > 1.8) {           // engine never started: fall back to the radio cue
-        TTS.fails++; if (TTS.fails >= 3) TTS.broken = true;
-        stopSpeech(); toTextMode(it, true);
+      if (!it.speechStarted && t - it.speechAt > 3.5) {           // engine never started: bench that voice, fall back to the radio cue
+        TTS.fails++;
+        if (TTS.voice && (!TTS.voice.localService || TTS.fails >= 2)) benchVoice('no start');
+        if (TTS.fails >= 4) markBroken();
+        stopSpeech(); try { if (synth) { synth.cancel(); if (synth.paused) synth.resume(); } } catch (e) { /* ignore */ }
+        toTextMode(it, true);
       } else if (it.speechStarted && !it.speechDone && t - it.speechT0 > it.estDur * 2.2 + 3) {
         stopSpeech(); it.speechDone = true;                       // onend never came
       } else if (!it.speechDone && t - (TTS.keepAlive || 0) > 4) {
@@ -1896,8 +1913,10 @@
       if (!inited) {
         inited = true;
         const onGesture = function () {
+          // every click/keypress re-arms speech: clears 'not-allowed' blocks and any failure streak
           TTS.gesture = true; TTS.blocked = false;
-          window.removeEventListener('pointerdown', onGesture, true); window.removeEventListener('keydown', onGesture, true);
+          if (TTS.broken || TTS.fails) { TTS.broken = false; TTS.fails = 0; }
+          if (TTS.ok && !TTS.voices.length) loadVoices();
         };
         window.addEventListener('pointerdown', onGesture, true);
         window.addEventListener('keydown', onGesture, true);

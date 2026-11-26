@@ -43,7 +43,7 @@
     ELEV_SPEED: [1, 0.8, 0.5],
     DENSITY_COST: 1.0,                   // attacker troops per defender troop-density per tile
     DENSITY_LOSS: 0.7,                   // defender troops lost per tile captured × density
-    ATTACK_SPEED_BASE: 14, ATTACK_SPEED_SQRT: 1 / 4, EXPAND_SPEED_MULT: 2.6,
+    ATTACK_SPEED_BASE: 17.5, ATTACK_SPEED_SQRT: 1 / 3.2, EXPAND_SPEED_MULT: 2.6, // +25% (designer)
 
     CAPITAL_LOOT_CREDITS: 0.25, CAPITAL_LOOT_URANIUM: 0.3, // obs +1,450 / +104 on a small capital
     ATTACK_PRESETS: [0.10, 0.25, 0.35, 0.50, 0.75],          // obs
@@ -120,39 +120,75 @@
   // ---------- doctrines ----------
   // mods: multiplicative unless noted
   C.DOCTRINES = [
-    { id: 'homeland', name: 'Homeland', level: 1, icon: 'flag',
-      desc: 'Attackers lose 15% more troops on your land · Your attacks advance 10% slower',
-      mods: { defendCost: 1.15, attackSpeed: 0.9 } },
-    { id: 'fortress', name: 'Fortress', level: 1, icon: 'fort',
+    { id: 'homeland', name: 'Homeland', icon: 'flag',
+      desc: 'Attackers lose 15% more troops on your land · Land you lose stays fresh 2× longer · Retaking your homeland costs 25% fewer troops, is 3× faster and ignores forts you built there · Your attacks advance 10% slower',
+      mods: { defendCost: 1.15, attackSpeed: 0.9, homeland: 1 } },
+    { id: 'fortress', name: 'Fortress', icon: 'fort',
       desc: 'Forts cost half · Your attacks advance 10% slower',
       mods: { cost_fort: 0.5, attackSpeed: 0.9 } },
-    { id: 'deterrence', name: 'Deterrence', level: 1, icon: 'shield',
+    { id: 'deterrence', name: 'Deterrence', icon: 'shield',
       desc: 'Defences and radar cost 30% less · Troops grow 15% slower',
       mods: { cost_defense: 0.7, growth: 0.85 } },
-    { id: 'firststrike', name: 'First Strike', level: 1, icon: 'silo',
+    { id: 'firststrike', name: 'First Strike', icon: 'silo',
       desc: 'Silos build 40% faster and reload 30% faster · 30% fewer starting troops',
       mods: { siloBuild: 0.6, siloReload: 0.7, startTroops: 0.7 } },
-    { id: 'signals', name: 'Signals', level: 3, icon: 'radar', original: true,
-      desc: 'Radar range +50% and earlier warnings · Income 10% lower',
-      mods: { radarRange: 1.5, income: 0.9 } },
-    { id: 'merchant', name: 'Merchant Marine', level: 5, icon: 'port', original: true,
-      desc: 'Trade ships pay 40% more · Warships cost 25% more',
-      mods: { tradeShip: 1.4, cost_warship: 1.25 } },
-    { id: 'industrialist', name: 'Industrialist', level: 8, icon: 'factory',
-      desc: 'Cities, ports, factories and logistics hubs cost 20% less · +10% income · Weapons research 25% slower',
-      mods: { cost_city: 0.8, cost_port: 0.8, cost_factory: 0.8, cost_hub: 0.8, income: 1.1, research: 1.25 } },
-    { id: 'bunker', name: 'Bunker State', level: 10, icon: 'bunker', original: true,
-      desc: 'Your land takes 40% less nuclear damage · Cities cost 20% more',
-      mods: { nukeDamage: 0.6, cost_city: 1.2 } },
-    { id: 'blitz', name: 'Blitz', level: 12, icon: 'bolt',
+    { id: 'trench', name: 'Trench Warfare', icon: 'fort', original: true, quote: 'Fight me like a man.',
+      desc: 'Land you take digs in instantly — you never hold fresh land · Land invaders take from you stays fresh 2× longer · Your forts crumble when occupied and rebuild themselves when you retake the ground · Counters Scorched Earth · Your attacks advance 15% slower',
+      mods: { trench: 1, attackSpeed: 0.85 } },
+    { id: 'scorched', name: 'Scorched Earth', icon: 'fire', original: true,
+      desc: 'Land you lose stays fresh forever — an inverse fort — and its buildings burn · Retaking it costs half · Losing your capital does not end you: your pockets fight on · No other drawback',
+      mods: { scorched: 1 } },
+    { id: 'blitzkrieg', name: 'Blitzkrieg', icon: 'bolt', original: true,
+      desc: 'Attacks advance 30% faster · Enemy pockets collapse 25% faster · Breakthroughs 50% stronger · Lose 50% more troops when you do not outnumber the enemy front',
+      mods: { attackSpeed: 1.3, blitzkrieg: 1, breakthrough: 1.5 } },
+    { id: 'blitz', name: 'Blitz', icon: 'bolt',
       desc: 'Attacks advance 15% faster · 10% lower troop cap',
       mods: { attackSpeed: 1.15, cap: 0.9 } },
-    { id: 'scorched', name: 'Scorched Earth', level: 14, icon: 'fire', original: true,
-      desc: 'Land you lose stays fresh for the enemy and its buildings burn · 10% lower troop cap',
-      mods: { scorched: 1, cap: 0.9 } },
-    { id: 'admiralty', name: 'Admiralty', level: 15, icon: 'anchor',
+    { id: 'signals', name: 'Signals', icon: 'radar', original: true,
+      desc: 'Radar range +50% and earlier warnings · Income 10% lower',
+      mods: { radarRange: 1.5, income: 0.9 } },
+    { id: 'merchant', name: 'Merchant Marine', icon: 'port', original: true,
+      desc: 'Trade ships pay 40% more · Warships cost 25% more',
+      mods: { tradeShip: 1.4, cost_warship: 1.25 } },
+    { id: 'industrialist', name: 'Industrialist', icon: 'factory',
+      desc: 'Cities, ports, factories and logistics hubs cost 20% less · +10% income · Weapons research 25% slower',
+      mods: { cost_city: 0.8, cost_port: 0.8, cost_factory: 0.8, cost_hub: 0.8, income: 1.1, research: 1.25 } },
+    { id: 'bunker', name: 'Bunker State', icon: 'bunker', original: true,
+      desc: 'Your land takes 40% less nuclear damage · Cities cost 20% more',
+      mods: { nukeDamage: 0.6, cost_city: 1.2 } },
+    { id: 'admiralty', name: 'Admiralty', icon: 'anchor',
       desc: 'Ports and warships cost 30% less · 10% lower troop cap',
       mods: { cost_port: 0.7, cost_warship: 0.7, cap: 0.9 } },
+  ];
+  for (const d of C.DOCTRINES) d.level = 1; // every doctrine is open from the start; levels buy skills instead
+
+  // ---------- skill tree (levels grant skill points; original design) ----------
+  // branch order = tree columns; `req` = skill that must be owned first
+  C.SKILL_BRANCHES = [
+    { id: 'war', name: 'WARFARE' }, { id: 'def', name: 'DEFENCE' }, { id: 'log', name: 'LOGISTICS' },
+    { id: 'eco', name: 'ECONOMY' }, { id: 'state', name: 'STATECRAFT' },
+  ];
+  C.SKILLS = [
+    { id: 'shock', branch: 'war', cost: 1, name: 'Shock Assault', desc: 'Attacks cost 6% fewer troops.', mods: { attackCost: 0.94 } },
+    { id: 'combined', branch: 'war', cost: 2, req: 'shock', name: 'Combined Arms', desc: 'Attacks advance 10% faster.', mods: { attackSpeed: 1.1 } },
+    { id: 'spearhead', branch: 'war', cost: 2, req: 'combined', name: 'Spearhead', desc: 'Clicked breakthroughs pull 30% harder toward your mark.', mods: { breakthrough: 1.3 } },
+    { id: 'motherland', branch: 'war', cost: 2, req: 'shock', name: 'Call for the Motherland', desc: 'Encircled troops in your own homeland break out: the pocket holds like a fort (stacking with your forts nearby) and fights its way back to your main force.', mods: { motherland: 1 } },
+    { id: 'pincer', branch: 'war', cost: 3, req: 'spearhead', name: 'Pincer Doctrine', desc: 'Enemy pockets you encircle collapse 40% faster.', mods: { pincer: 1 } },
+    { id: 'sandbags', branch: 'def', cost: 1, name: 'Sandbags', desc: 'Land you take digs in 30% faster.', mods: { digIn: 0.7 } },
+    { id: 'bastion', branch: 'def', cost: 2, req: 'sandbags', name: 'Bastion Engineering', desc: 'Fort radius +25%.', mods: { fortRadius: 1.25 } },
+    { id: 'earlywarn', branch: 'def', cost: 2, req: 'sandbags', name: 'Early Warning Net', desc: 'Radar range +30% and interception odds +8%.', mods: { radarRange: 1.3, intercept: 1.08 } },
+    { id: 'hardened', branch: 'def', cost: 3, req: 'bastion', name: 'Hardened Sites', desc: 'Your land takes 20% less nuclear damage; silos reload 20% faster.', mods: { nukeDamage: 0.8, siloReload: 0.8 } },
+    { id: 'kitchens', branch: 'log', cost: 1, name: 'Field Kitchens', desc: 'Troops grow 8% faster.', mods: { growth: 1.08 } },
+    { id: 'depots', branch: 'log', cost: 2, req: 'kitchens', name: 'Forward Depots', desc: 'Supply lines reach 40% further.', mods: { supply: 1.4 } },
+    { id: 'railgauge', branch: 'log', cost: 2, req: 'kitchens', name: 'Standard Gauge', desc: 'Convoys pay 15% more; hubs cost 20% less.', mods: { convoyPay: 1.15, cost_hub: 0.8 } },
+    { id: 'conscripts', branch: 'log', cost: 3, req: 'depots', name: 'Total Mobilisation', desc: 'Troop cap +10%.', mods: { cap: 1.1 } },
+    { id: 'wareco', branch: 'eco', cost: 1, name: 'War Economy', desc: 'Income +8%.', mods: { income: 1.08 } },
+    { id: 'treasury', branch: 'eco', cost: 1, req: 'wareco', name: 'State Treasury', desc: 'Start every match with +10k credits.', mods: { startCredits: 1 } },
+    { id: 'drilling', branch: 'eco', cost: 2, req: 'wareco', name: 'Deep Core Drilling', desc: 'Uranium output +25%.', mods: { uranium: 1.25 } },
+    { id: 'tradefleet', branch: 'eco', cost: 2, req: 'drilling', name: 'Trade Fleet', desc: 'Trade ships pay 20% more.', mods: { tradeShip: 1.2 } },
+    { id: 'tongue', branch: 'state', cost: 1, name: 'Silver Tongue', desc: 'Alliances, truces and aid requests are 12% more likely to be accepted.', mods: { diplomacy: 1 } },
+    { id: 'patron', branch: 'state', cost: 2, req: 'tongue', name: 'Patronage', desc: 'Your puppet-state is 10% more likely to accept a CEDE.', mods: { cedeBonus: 1 } },
+    { id: 'councilseat', branch: 'state', cost: 2, req: 'tongue', name: 'Permanent Seat', desc: 'Your Council vote counts three times.', mods: { councilVotes: 3 } },
   ];
 
   // field directives — picked at 10% and 25% land (original mechanic)

@@ -298,7 +298,7 @@
       if (S.owner[H.t]) MP.Render.ping(H.x, H.y, S.nations[S.owner[H.t]].color);
       return;
     }
-    if (S.phase === 'spawn') { MP.Game.playerSpawn(H.t); return; }
+    if (S.phase === 'spawn') { MP.Game.playerSpawn(H.t, e.shiftKey); return; }
     if (!p.alive) return;
     const mode = HUD.mode;
     if (mode && mode.kind === 'build') {
@@ -332,8 +332,10 @@
     const S = G.S, p = G.player();
     if (o && !G.canAttack(p.id, o)) { HUD.toast(G.isAllied(p.id, o) ? 'That nation is your ally' : G.protectedNow() ? 'Spawn protection — nations can only claim empty land for now' : 'Truce in effect', 'bad'); MP.SFX.play('error'); return; }
     const troops = p.troops * HUD.ratio;
+    const H = MP.Render.hover;
     if (MP.War.bordersWith(p.id, o)) {
-      const at = MP.War.launch(p.id, o, troops);
+      // the click is the point of main effort: forces concentrate and break through toward it
+      const at = MP.War.launch(p.id, o, troops, { fx: H.wx, fy: H.wy });
       if (at) {
         MP.SFX.play('attack');
         if (o) MP.Game.notify('attack.launched', { target: S.nations[o].name, troops: U.fmtK(troops) });
@@ -426,7 +428,8 @@
       opts.push({ id: 'gift', label: 'Gift', icon: 'troops' });
       opts.push({ id: 'askTroops', label: 'Ask Troops', icon: 'troops' });
       opts.push({ id: 'askCredits', label: 'Ask Credits', icon: 'coin' });
-      opts.push({ id: 'ally', label: team ? (n.partner ? 'Party' : 'Team') : 'Break', icon: 'flag', dis: team });
+      if (n.puppet) opts.push({ id: 'cede', label: 'Cede ' + Math.round(MP.Diplo.cedeOdds(p, n) * 100) + '%', icon: 'capital' });
+      else opts.push({ id: 'ally', label: team ? (n.partner ? 'Party' : 'Team') : 'Break', icon: 'flag', dis: team });
       opts.push({ id: 'embargo', label: p.embargo.has(o) ? 'Lift' : 'Embargo', icon: 'coin' });
     } else if (!self && !watch) {
       const hasFriends = G.alive().some((x) => x.id !== p.id && x.ai && G.isAllied(x.id, p.id));
@@ -486,6 +489,7 @@
       case 'askTroops': MP.Diplo.requestAid(p, n, 'troops'); break;
       case 'askCredits': MP.Diplo.requestAid(p, n, 'credits'); break;
       case 'target': MP.Diplo.setTarget(p, n); HUD.refresh(); break;
+      case 'cede': HUD.confirm(`Demand that ${n.name} cede?`, `${Math.round(MP.Diplo.cedeOdds(p, n) * 100)}% chance it signs everything over to you. If it refuses, it declares independence, goes to war with you and courts your enemies. Each gift you send it adds 5%.`, () => MP.Diplo.requestCede(p, n)); break;
     }
   };
 
@@ -765,12 +769,18 @@
     else if (S.opts.council) { els['h-peace'].textContent = S.council.active ? 'VOTE' : U.fmtTime(S.council.next); els['h-peace-wrap'].title = 'Next Global Council session'; els['h-peace-ico'].src = MP.Icons.url('capital', '#ffd21f', 32); }
     else els['h-peace'].textContent = '—';
     // spawn banner
-    if (S.phase === 'spawn' && p && !HUD.mode) HUD.banner(`<b>CHOOSE YOUR GROUND</b> · click land to place your nation · ${Math.ceil(S.spawnLeft)}s`);
+    const pupN = S.puppetId ? S.nations[S.puppetId] : null;
+    if (S.phase === 'spawn' && p && !HUD.mode) {
+      if (pupN && p.spawned) HUD.banner(`<b>PLACE YOUR PUPPET-STATE</b> · click land for ${U.esc(pupN.name)}${pupN.spawned ? ' (click again to move it)' : ''} · shift-click moves your nation · ${Math.ceil(S.spawnLeft)}s`);
+      else HUD.banner(`<b>CHOOSE YOUR GROUND</b> · click land to place your nation · ${Math.ceil(S.spawnLeft)}s`);
+    }
     else if (S.phase === 'play' && !HUD.mode && els['h-banner'].style.display !== 'none' && els['h-banner-t'].textContent.startsWith('CHOOSE')) HUD.banner(null);
     // land
     const pct = p ? 100 * p.tiles / S.landTotal : 0;
-    els['h-landbar'].style.width = U.clamp(pct / S.winPct * 100, 0, 100) + '%';
-    els['h-landpct'].textContent = U.fmtPct(pct);
+    const bloc = (S.blocSize || 1) > 1 ? S.blocPct || 0 : pct;
+    els['h-landbar'].style.width = U.clamp(bloc / S.winPct * 100, 0, 100) + '%';
+    els['h-landpct'].textContent = (S.blocSize || 1) > 1 ? U.fmtPct(pct) + ' · ⛓' + U.fmtPct(bloc) : U.fmtPct(pct);
+    els['h-landpct'].title = (S.blocSize || 1) > 1 ? `You hold ${U.fmtPct(pct)}; your alliance holds ${U.fmtPct(bloc)}. An alliance must take the whole world; any other bloc reaching ${S.winPct}% ends the match.` : `First to ${S.winPct}% of the world wins.`;
     root.querySelector('.ms.m10').style.left = (10 / S.winPct * 100) + '%';
     root.querySelector('.ms.m25').style.left = (25 / S.winPct * 100) + '%';
     // readout
@@ -800,7 +810,7 @@
     let rows = '';
     const top = al.slice(0, 8);
     const pRank = p ? al.indexOf(p) : -1;
-    const row = (n, i) => `<div class="lbr ${n === p ? 'me' : ''} ${n.partner ? 'partner' : ''}"><span>${n === p ? '›' : ''} ${i + 1}</span><span class="nm">${MP.Flags.img(n.flag, 'flag xs')} ${U.esc(n.name)}${n.isPlayer || n.partner ? ' <i>L' + (MP.Menu ? MP.Menu.level() : 1) + '</i>' : ''}</span><span>${U.fmtPct(100 * n.tiles / S.landTotal)}</span><span>${U.fmtK(n.troops)}</span></div>`;
+    const row = (n, i) => `<div class="lbr ${n === p ? 'me' : ''} ${n.partner ? 'partner' : ''}"><span>${n === p ? '›' : ''} ${i + 1}</span><span class="nm">${MP.Flags.img(n.flag, 'flag xs')} ${U.esc(n.name)}${n.puppet ? ' <i>PUPPET</i>' : n.isPlayer || n.partner ? ' <i>L' + (MP.Menu ? MP.Menu.level() : 1) + '</i>' : ''}</span><span>${U.fmtPct(100 * n.tiles / S.landTotal)}</span><span>${U.fmtK(n.troops)}</span></div>`;
     top.forEach((n, i) => { rows += row(n, i); });
     if (pRank >= 8) rows += row(p, pRank);
     els['h-lb-rows'].innerHTML = rows;

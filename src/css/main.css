@@ -63,7 +63,7 @@ img.ico, svg.ico { width: 14px; height: 14px; vertical-align: -2px; image-render
 .landbar { display: flex; align-items: center; gap: 8px; padding: 6px 10px; }
 .landbar .bar { flex: 1; height: 5px; overflow: visible; }
 .landbar .ms { position: absolute; top: -3px; width: 1px; height: 11px; background: var(--dim); }
-.landbar b { width: 42px; text-align: right; }
+.landbar b { min-width: 42px; text-align: right; white-space: nowrap; }
 .readout { padding: 6px 10px; font-size: 11px; min-height: 44px; }
 .readout .ro-1 { color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .readout #h-terrain { color: var(--text); letter-spacing: .06em; }
@@ -365,3 +365,22 @@ body.watch .hud-bc .buildbar, body.watch .hud-bc .stats, body.watch #h-dock, bod
   .bslot { width: 44px; height: 44px; } .m-right, .m-tl { width: 280px; } .m-center { width: 500px; } .m-main { width: 500px; }
 }
 @media (max-height: 820px) { #m-adv-slot { min-height: 230px; } .m-title { font-size: 30px; } }
+
+/* party modes, skill tree, voice status */
+.pmode { display: flex; gap: 4px; margin-bottom: 8px; }
+.pmode .btn { flex: 1; }
+.pm-note { font-size: 10px; margin-top: 6px; line-height: 1.5; }
+.m-top.hot { border-color: var(--y); color: var(--y); box-shadow: 0 0 10px rgba(255, 210, 31, .25); }
+.sk-tree { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.sk-col h4 { margin: 4px 0 6px; }
+.sk { display: flex; flex-direction: column; gap: 3px; width: 100%; text-align: left; background: #15130d; border: 1px solid var(--line2); padding: 8px; margin-bottom: 6px; cursor: pointer; }
+.sk b { font: 800 12px var(--head); letter-spacing: .05em; }
+.sk i { font-style: normal; font-size: 9px; color: var(--y); }
+.sk span { font-size: 10px; color: var(--dim); line-height: 1.4; }
+.sk em { font-style: normal; font-size: 9px; color: var(--red); }
+.sk.own { background: var(--y); border-color: var(--y); } .sk.own b, .sk.own span, .sk.own i { color: #0a0a08; }
+.sk.avail { border-color: var(--y3); } .sk.avail:hover { border-color: var(--y); }
+.sk.lock { opacity: .45; }
+.vstat { grid-column: 1 / -1; font-size: 10.5px; color: var(--dim); letter-spacing: .05em; }
+.vstat b { color: var(--text); }
+.modal { width: min(980px, 96vw); }

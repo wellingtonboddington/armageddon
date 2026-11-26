@@ -26,7 +26,21 @@ const rings = [];
 for (const f of (fc.features || [fc])) {
   const g = f.geometry;
   const polys = g.type === 'Polygon' ? [g.coordinates] : g.coordinates;
-  for (const poly of polys) for (const ring of poly) rings.push(ring.map(([lo, la]) => [px(lo), py(la)]));
+  for (const poly of polys) for (const ring of poly) {
+    // unwrap longitudes so rings crossing the antimeridian stay continuous, then add shifted copies
+    let off = 0, prev = null;
+    const un = ring.map(([lo, la]) => {
+      if (prev != null) { const d = lo + off - prev; if (d > 180) off -= 360; else if (d < -180) off += 360; }
+      prev = lo + off;
+      return [px(lo + off), py(la)];
+    });
+    let minX = Infinity, maxX = -Infinity;
+    for (const [x] of un) { if (x < minX) minX = x; if (x > maxX) maxX = x; }
+    for (const shift of [-W, 0, W]) {
+      if (maxX + shift < 0 || minX + shift > W) continue;
+      rings.push(shift ? un.map(([x, y]) => [x + shift, y]) : un);
+    }
+  }
 }
 console.log('rings', rings.length, 'W', W, 'H', H);
 

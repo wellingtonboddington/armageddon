@@ -2,7 +2,7 @@
    Global Council (original mechanic). */
 (function () {
   'use strict';
-  const MP = window.MP, U = MP.U, C = MP.CONFIG, G = MP.G;
+  const MP = window.MP, U = MP.U, C = MP.CONFIG, G = MP.G, World = MP.World;
 
   const D = (MP.Diplo = {});
 
@@ -39,8 +39,8 @@
     s -= D.allianceCount(b) * 0.08;
     s += (pers.ally - 0.6) * 0.5;
     if (b.wars.size > 2) s += 0.1; // stretched nations want friends
-    const p = 1 / (1 + Math.exp(-s * 3.2));
-    return U.clamp(p, 0.04, 0.93);
+    const p = 1 / (1 + Math.exp(-s * 3.2)) + (G.has(a, 'diplomacy') ? 0.12 : 0);
+    return U.clamp(p, 0.04, 0.95);
   };
 
   D.truceOdds = function (a, b) {
@@ -54,7 +54,7 @@
     if (a.traitorUntil > S.t) s -= 0.4;
     const pers = C.PERSONALITIES[b.personality] || C.PERSONALITIES.opportunist;
     s -= (pers.aggro - 0.5) * 0.8;
-    return U.clamp(1 / (1 + Math.exp(-s * 2.6)), 0.05, 0.95);
+    return U.clamp(1 / (1 + Math.exp(-s * 2.6)) + (G.has(a, 'diplomacy') ? 0.12 : 0), 0.05, 0.95);
   };
 
   // ---------------- actions ----------------
@@ -108,7 +108,104 @@
     if (kind === 'troops') { amount = Math.min(amount, a.troops); a.troops -= amount; b.troops += amount; }
     else { amount = Math.min(amount, a.credits); a.credits -= amount; b.credits += amount; }
     G.addRel(b.id, a.id, 6);
+    if (b.puppet && a.isPlayer && amount > 0) {         // your gifts are remembered (CEDE odds) and never auto-returned
+      b.donations = (b.donations || 0) + 1;
+      if (kind === 'troops') b.giftedT = (b.giftedT || 0) + amount; else b.giftedC = (b.giftedC || 0) + amount;
+    }
     return amount;
+  };
+
+  // ---------------- PUPPET-STATE ----------------
+  D.puppetOf = function (p) { const S = G.S; const n = S.puppetId ? S.nations[S.puppetId] : null; return n && n.alive && n.puppet ? n : null; };
+  D.cedeOdds = function (p, n) {
+    return Math.min(0.99, 0.65 + 0.05 * (n.donations || 0) + (G.has(p, 'cedeBonus') ? 0.1 : 0));
+  };
+  D.requestCede = function (p, n) {
+    const S = G.S;
+    if (!n.puppet) return;
+    if (D.pending.some((x) => x.kind === 'cede' && x.to === n.id)) return;
+    D.pending.push({ kind: 'cede', from: p.id, to: n.id, at: S.t + 2 + S.rng() * 1.5 });
+    MP.Game.wire('CABLE', `YOU DEMAND THAT ${n.name} CEDE ITS SOVEREIGNTY`, 'cable');
+    MP.Game.toast(`Cede demanded · ${Math.round(D.cedeOdds(p, n) * 100)}% chance`, 'info');
+    MP.SFX.play('send');
+  };
+  function annexPuppet(p, n) {
+    const S = G.S;
+    n.capital = -1;
+    for (const st of S.structs) if (st.owner === n.id) {           // buildings change hands intact
+      const arr = n.st[st.type]; const i = arr.indexOf(st); if (i >= 0) arr.splice(i, 1);
+      n.levels[st.type] = Math.max(0, (n.levels[st.type] || 0) - st.level);
+      st.owner = p.id; p.st[st.type].push(st); p.levels[st.type] = (p.levels[st.type] || 0) + st.level;
+    }
+    for (let t = 0; t < World.N; t++) if (S.owner[t] === n.id) G.setOwner(t, p.id, 0);
+    for (const sh of S.ships) if (sh.owner === n.id) sh.owner = p.id;
+    for (const at of S.attacks) if (at.from === n.id) { at.from = p.id; War_refresh(at); }
+    p.troops += n.troops; p.credits += n.credits; p.uranium += n.uranium;
+    for (const w in n.research) p.research[w] = true;
+    n.troops = 0; n.credits = 0; n.uranium = 0;
+    n.alive = false; n.eliminatedAt = S.t;
+    for (const o of S.nations) if (o) { o.allies.delete(n.id); o.truces.delete(n.id); o.wars.delete(n.id); o.embargo.delete(n.id); }
+    S.roadsDirty = true;
+    MP.Game.wire('FLASH', `${n.name} IS CEDED TO YOU — LAND, FORCES AND TREASURY TRANSFERRED`, 'good');
+    MP.Game.notify('diplo.ceded', { nation: n.name, text: `${n.name} has signed. Its flag comes down without a shot.`, priority: 2 });
+    MP.SFX.play('milestone');
+  }
+  function War_refresh(at) { MP.War.refreshFrontier(at); }
+  function independence(p, n) {
+    const S = G.S;
+    n.puppet = false; n.partner = false; n.team = 0; S.puppetId = 0;
+    p.allies.delete(n.id); n.allies.delete(p.id);
+    G.S.relations[n.id * S.relN + p.id] = -100;
+    n.personality = 'hawk';
+    n.ai.grudge.set(p.id, 12);
+    MP.War.declareWar(n.id, p.id);
+    MP.Game.wire('FLASH', `${n.name} DECLARES INDEPENDENCE AND GOES TO WAR WITH YOU`, 'betray');
+    MP.Game.notify('diplo.betrayed', { nation: n.name });
+    MP.SFX.play('betrayal');
+    // it courts your enemies first, then its nearest neighbours
+    const cands = G.alive().filter((o) => o.id !== n.id && o.id !== p.id && !G.isAllied(o.id, p.id) && o.ai)
+      .sort((a, b) => (b.wars.has(p.id) - a.wars.has(p.id)) || (U.dist2(a.capX, a.capY, n.capX, n.capY) - U.dist2(b.capX, b.capY, n.capX, n.capY)));
+    let signed = 0;
+    for (const o of cands.slice(0, 5)) {
+      if (signed >= 3) break;
+      if (S.rng() < (o.wars.has(p.id) ? 0.85 : 0.6)) { D.formAlliance(n, o); MP.War.declareWar(o.id, p.id); signed++; MP.Game.wire('CABLE', `${o.name} JOINS ${n.name} AGAINST YOU`, 'bad'); }
+    }
+    if (MP.War.bordersWith(n.id, p.id)) MP.War.launch(n.id, p.id, n.troops * 0.5, { fx: p.capX, fy: p.capY });
+  }
+  function answerCede(r, p, n) {
+    if (!n.puppet || !n.alive) return;
+    if (G.S.rng() < D.cedeOdds(p, n)) annexPuppet(p, n); else independence(p, n);
+  }
+  // runs once a second: keeps the puppet behind you and feeds your war effort
+  D.tickPuppet = function () {
+    const S = G.S, p = G.player();
+    const n = D.puppetOf(p);
+    if (!n || !p || !p.alive) return;
+    // never stronger or richer than its master (gifts you made it are kept out of this)
+    if (n.troops > p.troops) {
+      const give = Math.min(n.troops - (n.giftedT || 0), (n.troops - p.troops) / 2 + n.troops * 0.03);
+      if (give > 50) { n.troops -= give; p.troops += give; }
+    }
+    if (n.credits > p.credits) {
+      const give = Math.min(n.credits - (n.giftedC || 0), (n.credits - p.credits) / 2 + n.credits * 0.03);
+      if (give > 50) { n.credits -= give; p.credits += give; }
+    }
+    // follow the master into every war
+    const targets = new Set();
+    for (const at of S.attacks) if (at.from === p.id && at.to && !at.done) targets.add(at.to);
+    if (p.targetId) targets.add(p.targetId);
+    let focus = 0;
+    for (const t of targets) { if (MP.War.bordersWith(n.id, t)) { focus = t; break; } if (!focus) focus = t; }
+    if (focus) {
+      n.ai.focus = focus; n.ai.focusUntil = S.t + 20; n.wars.add(focus);
+      const reachable = MP.War.bordersWith(n.id, focus);
+      // can't reach it on land: send troops home for the war effort
+      if (!reachable && S.t - (n.ai.lastDonate || 0) > 8 && n.troops > n.cap * 0.25) {
+        n.ai.lastDonate = S.t;
+        const amt = n.troops * 0.12; n.troops -= amt; p.troops += amt;
+        MP.Game.wire('CABLE', `${n.name} SENDS ${U.fmtK(amt)} TROOPS FOR THE WAR EFFORT`, 'good');
+      }
+    }
   };
 
   // ---------------- player requests (async bot answers) ----------------
@@ -145,6 +242,8 @@
         else { MP.Game.notify('diplo.declined', { nation: b.name }); MP.Game.wire('CABLE', `${b.name} DECLINES YOUR ALLIANCE`, 'cable'); G.addRel(b.id, a.id, -2); MP.SFX.play('decline'); }
       } else if (r.kind === 'aid') {
         answerAid(r, a, b);
+      } else if (r.kind === 'cede') {
+        answerCede(r, a, b);
       } else if (r.kind === 'truce') {
         const p = D.truceOdds(a, b);
         if (S.rng() < p) { D.formTruce(a, b); MP.Game.notify('diplo.truce', { nation: b.name }); MP.Game.wire('CABLE', `${b.name} AGREES TO A 3:00 TRUCE`, 'good'); MP.SFX.play('alliance'); }
@@ -224,11 +323,13 @@
     if (!G.isAllied(a.id, b.id)) return;
     const partner = b.partner || (b.team && b.team === a.team);
     let odds = partner ? 0.8 : U.clamp(0.25 + G.rel(b.id, a.id) / 140, 0.05, 0.85);
+    if (G.has(a, 'diplomacy')) odds += 0.12;
+    if (b.puppet) odds = 9; // a puppet answers 99%: the roll below is overridden
     const underFire = S.t - b.lastHitAt < 10;
     if (r.what === 'troops') { odds += b.troops / Math.max(1, b.cap) > 0.55 ? 0.2 : -0.25; if (underFire) odds -= 0.35; }
     else odds += b.credits > 25000 ? 0.15 : -0.3;
     if (a.lastHitAt && S.t - a.lastHitAt < 15) odds += 0.15; // helping a friend under attack
-    if (S.rng() < odds) {
+    if (b.puppet ? S.rng() < 0.99 : S.rng() < odds) {
       const amt = r.what === 'troops' ? b.troops * (0.1 + S.rng() * 0.12) : b.credits * (0.12 + S.rng() * 0.15);
       const got = D.gift(b, a, r.what, amt);
       MP.Game.wire('CABLE', `${b.name} SENDS YOU ${U.fmtK(got)} ${r.what.toUpperCase()}`, 'good');
@@ -360,7 +461,7 @@
     const S = G.S, cn = S.council, res = cn.active;
     cn.active = null;
     let yes = 0, no = 0;
-    for (const id in res.votes) { if (res.votes[id] === 'yes') yes++; else if (res.votes[id] === 'no') no++; }
+    for (const id in res.votes) { const w = G.mod(S.nations[id], 'councilVotes'); if (res.votes[id] === 'yes') yes += w; else if (res.votes[id] === 'no') no += w; }
     res.yes = yes; res.no = no;
     const passed = yes > no;
     MP.HUD && MP.HUD.closeCouncil(res, passed);
@@ -397,6 +498,8 @@
   D.tick = function (dt) {
     const S = G.S;
     D.tickPending();
+    S._pupT = (S._pupT || 0) + dt;
+    if (S._pupT >= 1) { S._pupT = 0; D.tickPuppet(); }
     S._betT = (S._betT || 0) + dt;
     if (S._betT >= 5) { S._betT = 0; D.tickBetrayal(); }
     S._aggT = (S._aggT || 0) + dt;

@@ -21,7 +21,7 @@
       ],
       active: 0,
       owned: { territory: ['signal', 'ember'], pattern: ['none', 'hazard'], missile: ['standard'], detonation: ['white', 'amber'] },
-      party: [], partyOn: false,
+      party: [], partyOn: false, partyMode: 'party', skills: [],
       missions: null, lastDay: '', dayStreak: 0,
       commend: {}, endings: {}, firstBoot: true,
       rules: { bots: 99, difficulty: 'regular', minutes: 40, winPct: 80, peaceMinutes: 5, startCredits: 5000, nukes: true, weather: true, council: true, teams: 2 },
@@ -36,6 +36,17 @@
     for (const k in d) if (P[k] === undefined) P[k] = d[k];
     for (const k in d.rules) if (P.rules[k] === undefined) P.rules[k] = d.rules[k];
     for (const k in d.owned) if (!P.owned[k]) P.owned[k] = d.owned[k];
+    // harden against older / damaged profiles
+    if (!Array.isArray(P.party)) P.party = [];
+    P.party = P.party.filter((b) => b && typeof b.name === 'string' && typeof b.flag === 'string');
+    if (P.partyMode !== 'puppet') P.partyMode = 'party';
+    if (!Array.isArray(P.skills)) P.skills = [];
+    P.skills = P.skills.filter((id) => C.SKILLS.some((k) => k.id === id));
+    if (!Array.isArray(P.loadouts) || P.loadouts.length < 5) P.loadouts = d.loadouts;
+    for (const lo of P.loadouts) if (!C.DOCTRINES.some((x) => x.id === lo.doctrine)) lo.doctrine = 'homeland';
+    if (!(P.active >= 0 && P.active < 5)) P.active = 0;
+    if (!isFinite(P.level) || P.level < 1) P.level = 1;
+    while (Menu.skillPoints && Menu.skillPoints() < 0) P.skills.pop();
     Menu.dailyCheck();
     return P;
   };
@@ -43,6 +54,8 @@
   Menu.profile = () => P;
   Menu.level = () => P ? P.level : 1;
   const xpNeed = (L) => 400 + 200 * (L - 1);
+  // one skill point per level
+  Menu.skillPoints = () => P.level - P.skills.reduce((a, id) => a + ((C.SKILLS.find((k) => k.id === id) || {}).cost || 0), 0);
   Menu.slotsUnlocked = () => 2 + (P.level >= 5 ? 1 : 0) + (P.level >= 10 ? 1 : 0) + (P.level >= 20 ? 1 : 0);
   Menu.loadout = () => P.loadouts[P.active];
 
@@ -131,7 +144,7 @@
     }
     // endings
     let newEnding = false;
-    const endKey = kind === 'timeout_loss' ? 'eliminated' : kind;
+    const endKey = (kind === 'timeout_loss' || kind === 'overrun') ? 'eliminated' : kind;
     if (!watch && !P.endings[endKey]) { P.endings[endKey] = true; newEnding = true; }
     // commendations
     const commends = [];
@@ -212,15 +225,17 @@
       <div class="m-tl">
         <button class="panel brk m-card clickable" id="m-card">${MP.Flags.img(P.flag, 'flag mflag')}<div><b>${U.esc(P.name)}</b><div class="lv">LV ${P.level} <span class="bar"><i style="width:${lvlPct}%"></i></span></div></div></button>
         <div class="panel brk m-party">
-          <span class="tag">SQUAD</span><h3>PARTY</h3>
-          <div class="party-slots">${[0, 1].map((i) => partySlot(i)).join('')}</div>
+          <span class="tag">SQUAD</span><h3>${P.partyMode === 'puppet' ? 'PUPPET-STATE' : 'PARTY'}</h3>
+          <div class="pmode"><button class="btn sm ${P.partyMode !== 'puppet' ? 'on' : ''}" data-pm="party">PARTY ×2</button><button class="btn sm ${P.partyMode === 'puppet' ? 'on' : ''}" data-pm="puppet">PUPPET-STATE ×1</button></div>
+          <div class="party-slots">${(P.partyMode === 'puppet' ? [0] : [0, 1]).map((i) => partySlot(i)).join('')}</div>
+          <div class="pm-note dim">${P.partyMode === 'puppet' ? 'You pick its doctrine and place it after your nation. Never betrays, never outgrows you, follows you to war. Ask for a CEDE any time.' : 'Two partner bots. Command assigns their doctrines and drop zones.'}</div>
           <label class="pt-toggle"><input type="checkbox" id="m-party-on" ${P.partyOn ? 'checked' : ''}> Deploy party <span class="dim">(${P.partyOn && P.party.length ? 'alliances disabled' : 'up to 5 alliances'})</span></label>
         </div>
         <div class="m-note">OFFLINE BUILD · NO NETWORK REQUIRED<br>${C.BOT_NAMES.length}+ AI COMMANDERS STANDING BY</div>
       </div>
       <div class="m-tr">
         <span class="scrap"><img class="ico" src="${MP.Icons.url('gear', '#ffd21f', 32)}"> ${U.fmtInt(P.scrap)}</span>
-        <button class="btn m-top" id="m-ranks">RANKS</button><button class="btn m-top" id="m-shop">ARMORY</button><button class="btn m-top" id="m-fs" title="Toggle fullscreen">⛶</button><button class="btn icon m-top" id="m-settings">${MP.Icons.svgIcon('gear', '#ece6cf', 32)}</button>
+        <button class="btn m-top ${Menu.skillPoints() > 0 ? 'hot' : ''}" id="m-skills">SKILLS${Menu.skillPoints() > 0 ? ' · ' + Menu.skillPoints() : ''}</button><button class="btn m-top" id="m-ranks">RANKS</button><button class="btn m-top" id="m-shop">ARMORY</button><button class="btn m-top" id="m-fs" title="Toggle fullscreen">⛶</button><button class="btn icon m-top" id="m-settings">${MP.Icons.svgIcon('gear', '#ece6cf', 32)}</button>
       </div>
       <div class="m-center">
         <h1 class="m-title" data-text="MIDNIGHT PROTOCOL">MIDNIGHT PROTOCOL</h1>
@@ -265,6 +280,8 @@
     $('m-settings').onclick = () => Menu.openSettings(false);
     $('m-fs').onclick = () => MP.toggleFullscreen();
     $('m-party-on').onchange = (e) => { P.partyOn = e.target.checked; Menu.save(); Menu.render(); };
+    root.querySelectorAll('[data-pm]').forEach((b) => { b.onclick = () => { P.partyMode = b.dataset.pm; Menu.save(); Menu.render(); }; });
+    $('m-skills').onclick = Menu.openSkills;
     root.querySelectorAll('.party-slots [data-pi]').forEach((b) => { b.onclick = () => Menu.editPartyBot(Number(b.dataset.pi)); });
     root.querySelectorAll('.reroll').forEach((b) => { b.onclick = () => {
       if (P.scrap < 50) { MP.SFX.play('error'); return; }
@@ -305,7 +322,8 @@
     const b = P.party[i];
     if (!b) return `<button class="ps empty clickable" data-pi="${i}">＋ ADD BOT</button>`;
     const doc = C.DOCTRINES.find((d) => d.id === b.doctrine);
-    return `<button class="ps clickable" data-pi="${i}">${MP.Flags.img(b.flag, 'flag sm')}<div><b>${U.esc(b.name)}</b><span>${doc ? doc.name.toUpperCase() : ''}</span></div></button>`;
+    const pup = P.partyMode === 'puppet';
+    return `<button class="ps clickable" data-pi="${i}">${MP.Flags.img(b.flag, 'flag sm')}<div><b>${U.esc(b.name)}</b><span>${pup ? 'PUPPET · ' + (doc ? doc.name.toUpperCase() : '') : 'DOCTRINE ASSIGNED BY COMMAND'}</span></div></button>`;
   }
 
   function drawLoadoutPreview(cv, lo) {
@@ -363,8 +381,9 @@
       mode, bots: mode === 'watch' ? Math.min(100, r.bots + 1) : r.bots, teams: r.teams, difficulty: r.difficulty, minutes: r.minutes, winPct: r.winPct,
       peaceMinutes: r.peaceMinutes, startCredits: r.startCredits, nukes: r.nukes, weather: r.weather, council: r.council,
       seed: (Math.random() * 4294967295) >>> 0,
-      player: { name: P.name, flag: P.flag, color: tc.rgb.slice(), pattern: lo.pattern, doctrine: lo.doctrine, missile: lo.missile, detonation: lo.detonation },
-      party: mode === 'ffa' && P.partyOn ? P.party.slice(0, C.PARTY_MAX) : [],
+      player: { name: P.name, flag: P.flag, color: tc.rgb.slice(), pattern: lo.pattern, doctrine: lo.doctrine, missile: lo.missile, detonation: lo.detonation, skills: P.skills.slice() },
+      party: mode === 'ffa' && P.partyOn ? P.party.slice(0, P.partyMode === 'puppet' ? 1 : C.PARTY_MAX) : [],
+      partyMode: P.partyMode,
     };
   };
 
@@ -408,9 +427,10 @@
     const src = isBot ? (P.party[botIndex] || { name: C.BOT_NAMES[Math.floor(Math.random() * C.BOT_NAMES.length)], flag: 'cc:' + MP.Flags.list[Math.floor(Math.random() * MP.Flags.list.length)].code, doctrine: 'homeland' }) : P;
     const st = { name: src.name, flag: src.flag, doctrine: src.doctrine || 'homeland', tab: src.flag.startsWith('cc:') ? 'country' : 'build', search: '',
       b: { layout: 'h3', colors: ['ffd21f', '111111', 'e8112d'], emblem: 'nuke', emblemColor: 'ffd21f' } };
-    const m = modal(`<div class="mh"><span class="tag">${isBot ? 'PARTY · BOT COMMANDER' : 'TOP SECRET'}</span><h2>${isBot ? 'PARTY BOT' : 'YOUR NATION'}</h2></div>
+    const pupMode = isBot && P.partyMode === 'puppet';
+    const m = modal(`<div class="mh"><span class="tag">${isBot ? (pupMode ? 'PUPPET-STATE' : 'PARTY · BOT COMMANDER') : 'TOP SECRET'}</span><h2>${isBot ? (pupMode ? 'PUPPET-STATE' : 'PARTY BOT') : 'YOUR NATION'}</h2></div>
       <div class="ne-top"><img class="flag xl" id="ne-flag"><div class="ne-name"><input id="ne-name" maxlength="24" spellcheck="false"><span class="dim" id="ne-count"></span>
-      ${isBot ? `<select id="ne-doc">${C.DOCTRINES.map((d) => `<option value="${d.id}">${d.name}</option>`).join('')}</select>` : ''}</div></div>
+      ${pupMode ? `<select id="ne-doc">${C.DOCTRINES.map((d) => `<option value="${d.id}">${d.name}</option>`).join('')}</select>` : isBot ? '<span class="dim small">Doctrine and drop zone are assigned by command. Switch to PUPPET-STATE to choose them.</span>' : ''}</div></div>
       <div class="tabs"><button class="btn" data-tab="build">BUILD</button><button class="btn" data-tab="country">COUNTRY</button></div>
       <div id="ne-body"></div>
       <div class="row-btns"><button class="btn primary" id="ne-save">SAVE</button>${isBot && P.party[botIndex] ? '<button class="btn danger" id="ne-del">REMOVE</button>' : ''}</div>`, (box, close) => {
@@ -462,7 +482,7 @@
         const name = (nameEl.value || 'NATION').trim().slice(0, 24) || 'NATION';
         if (isBot) {
           const bot = { name, flag: st.flag, doctrine: st.doctrine };
-          if (P.party.length >= C.PARTY_MAX && !P.party[botIndex]) { MP.Advisor && MP.Advisor.event('menu.party_full', {}); return; }
+          if (P.party.length >= (P.partyMode === 'puppet' ? 1 : C.PARTY_MAX) && !P.party[botIndex]) { MP.Advisor && MP.Advisor.event('menu.party_full', {}); return; }
           P.party[botIndex] = bot; P.party = P.party.filter(Boolean); P.partyOn = true;
           MP.Advisor && MP.Advisor.event('menu.party_add', { name });
         } else { P.name = name; P.flag = st.flag; MP.Advisor && MP.Advisor.event('menu.nation_saved', { name }); }
@@ -526,12 +546,12 @@
 
   Menu.openDoctrines = function (slot, done) {
     modal(`<div class="mh"><span class="tag">TOP SECRET</span><h2>DOCTRINE</h2><p class="dim">A doctrine is a standing order for the whole war.</p></div>
-      <div class="doc-list">${C.DOCTRINES.map((d) => { const locked = P.level < d.level; const on = P.loadouts[slot].doctrine === d.id;
-        return `<button class="doc ${on ? 'on' : ''} ${locked ? 'locked' : ''}" data-d="${d.id}"><img src="${MP.Icons.url(d.icon, on ? '#0a0a08' : '#ece6cf', 40)}"><div><b>${d.name.toUpperCase()}${d.original ? ' <i class="new">NEW</i>' : ''}</b><span>${locked ? 'LEVEL ' + d.level + ' · ' : ''}${d.desc.toUpperCase()}</span></div>${locked ? '<span class="lk">🔒</span>' : ''}</button>`; }).join('')}</div>`,
+      <div class="doc-list">${C.DOCTRINES.map((d) => { const locked = false; const on = P.loadouts[slot].doctrine === d.id;
+        return `<button class="doc ${on ? 'on' : ''} ${locked ? 'locked' : ''}" data-d="${d.id}"><img src="${MP.Icons.url(d.icon, on ? '#0a0a08' : '#ece6cf', 40)}"><div><b>${d.name.toUpperCase()}${d.original ? ' <i class="new">NEW</i>' : ''}</b><span>${d.quote ? '“' + d.quote.toUpperCase() + '” · ' : ''}${d.desc.toUpperCase()}</span></div>${locked ? '<span class="lk">🔒</span>' : ''}</button>`; }).join('')}</div>`,
     (box, close) => box.addEventListener('click', (e) => {
       const b = e.target.closest('[data-d]'); if (!b) return;
       const d = C.DOCTRINES.find((x) => x.id === b.dataset.d);
-      if (P.level < d.level) { MP.SFX.play('error'); return; }
+
       P.loadouts[slot].doctrine = d.id; Menu.save(); close();
       MP.Advisor && MP.Advisor.event('menu.doctrine', { doctrine: d.name });
       if (done) done(); else Menu.render();
@@ -579,10 +599,47 @@
     return m;
   };
 
+  Menu.openSkills = function () {
+    const m = modal('<div id="sk-body"></div>', (box) => {
+      const body = box.querySelector('#sk-body');
+      const render = () => {
+        const pts = Menu.skillPoints();
+        body.innerHTML = `<div class="mh"><span class="tag">COMMAND</span><h2>SKILL TREE</h2><p class="dim">Level ${P.level} · <b class="y">${pts} POINT${pts === 1 ? '' : 'S'} AVAILABLE</b> · one point per level · respec is free</p></div>
+          <div class="sk-tree">${C.SKILL_BRANCHES.map((br) => `<div class="sk-col"><h4>${br.name}</h4>${C.SKILLS.filter((k) => k.branch === br.id).map((k) => {
+            const own = P.skills.includes(k.id), reqOk = !k.req || P.skills.includes(k.req), afford = pts >= k.cost;
+            const st = own ? 'own' : reqOk && afford ? 'avail' : 'lock';
+            const req = k.req ? C.SKILLS.find((x) => x.id === k.req) : null;
+            return `<button class="sk ${st}" data-sk="${k.id}"><b>${k.name.toUpperCase()}</b><i>${k.cost} PT${k.cost > 1 ? 'S' : ''}</i><span>${k.desc}</span>${req && !reqOk ? `<em>REQUIRES ${req.name.toUpperCase()}</em>` : ''}</button>`;
+          }).join('')}</div>`).join('')}</div>
+          <div class="row-btns"><button class="btn danger" id="sk-reset">RESPEC (FREE)</button></div>`;
+      };
+      body.addEventListener('click', (e) => {
+        if (e.target.closest('#sk-reset')) { P.skills = []; Menu.save(); render(); Menu.render(); MP.SFX.play('close'); return; }
+        const b = e.target.closest('[data-sk]'); if (!b) return;
+        const k = C.SKILLS.find((x) => x.id === b.dataset.sk);
+        if (P.skills.includes(k.id)) {
+          // refund (and anything that depends on it)
+          const drop = new Set([k.id]); let grew = true;
+          while (grew) { grew = false; for (const x of C.SKILLS) if (x.req && drop.has(x.req) && !drop.has(x.id) && P.skills.includes(x.id)) { drop.add(x.id); grew = true; } }
+          P.skills = P.skills.filter((id) => !drop.has(id));
+          MP.SFX.play('close');
+        } else {
+          if (k.req && !P.skills.includes(k.req)) { MP.SFX.play('error'); return; }
+          if (Menu.skillPoints() < k.cost) { MP.SFX.play('error'); MP.HUD.toast('Not enough skill points — level up to earn more', 'bad'); return; }
+          P.skills.push(k.id); MP.SFX.play('researchDone');
+          MP.Advisor && MP.Advisor.event('menu.unlock', { item: k.name });
+        }
+        Menu.save(); render(); Menu.render();
+      });
+      render();
+    });
+    return m;
+  };
+
   Menu.openRanks = function () {
     modal(`<div class="mh"><span class="tag">SERVICE RECORD</span><h2>RANKS</h2><p class="dim">Level ${P.level} · ${U.fmtInt(P.xp)} / ${U.fmtInt(xpNeed(P.level))} XP to next level</p></div>
       <div class="ranks">${RANKS.map(([lv, n]) => `<div class="rk ${P.level >= lv ? 'on' : ''} ${Menu.rankName(P.level) === n ? 'cur' : ''}"><span>LV ${lv}</span><b>${n}</b></div>`).join('')}</div>
-      <h4>UNLOCKS</h4><div class="ranks">${C.DOCTRINES.filter((d) => d.level > 1).map((d) => `<div class="rk ${P.level >= d.level ? 'on' : ''}"><span>LV ${d.level}</span><b>${d.name.toUpperCase()}</b></div>`).join('')}
+      <h4>UNLOCKS</h4><p class="dim small">Every doctrine is open from the start. Each level grants 1 skill point for the skill tree (${Menu.skillPoints()} unspent).</p><div class="ranks">
       <div class="rk ${P.level >= 5 ? 'on' : ''}"><span>LV 5</span><b>LOADOUT SLOT 3</b></div><div class="rk ${P.level >= 10 ? 'on' : ''}"><span>LV 10</span><b>LOADOUT SLOT 4</b></div><div class="rk ${P.level >= 20 ? 'on' : ''}"><span>LV 20</span><b>LOADOUT SLOT 5</b></div></div>`);
   };
 
@@ -651,6 +708,8 @@
         <label class="ck"><input type="checkbox" id="st-voice" ${MP.Advisor && MP.Advisor.isVoiceEnabled() ? 'checked' : ''}> VESPER FEMALE VOICE</label>
         <label>VOICE <select id="st-vname"><option value="">AUTO (FEMALE)</option>${voices.map((v) => `<option value="${U.esc(v.name)}" ${v.name === cur ? 'selected' : ''}>${U.esc(v.name)} ${v.female ? '♀' : ''} (${v.lang})</option>`).join('')}</select></label>
         <label>SPEECH RATE <b id="st-rate-v">${S.get('advisor.rate', 1).toFixed ? Number(S.get('advisor.rate', 1)).toFixed(2) : 1}</b><input type="range" min="0.8" max="1.3" step="0.02" value="${S.get('advisor.rate', 1)}" id="st-rate"></label>
+        <div class="vstat" id="st-vstat"></div>
+        <button class="btn" id="st-vtest" type="button">TEST VOICE</button>
         <label class="ck"><input type="checkbox" id="st-tut" ${S.get('tutorial', true) ? 'checked' : ''}> TUTORIAL BRIEFINGS</label>
         <label class="ck"><input type="checkbox" id="st-fs" ${S.get('fullscreen', true) ? 'checked' : ''}> AUTO FULLSCREEN</label>
       </div>
@@ -662,6 +721,15 @@
       box.querySelector('#st-vname').onchange = (e) => { MP.Advisor && MP.Advisor.setVoiceName(e.target.value || null); MP.Advisor && MP.Advisor.say('Voice check. Channel is clear.', { priority: 1 }); };
       box.querySelector('#st-rate').oninput = (e) => { S.set('advisor.rate', Number(e.target.value)); box.querySelector('#st-rate-v').textContent = Number(e.target.value).toFixed(2); MP.Advisor && MP.Advisor.setRate(Number(e.target.value)); };
       box.querySelector('#st-tut').onchange = (e) => S.set('tutorial', e.target.checked);
+      const vstat = () => {
+        const el = box.querySelector('#st-vstat'); if (!el) return;
+        let d = null; try { d = MP.Advisor && MP.Advisor.debugState ? MP.Advisor.debugState().voice : null; } catch (e) { d = null; }
+        if (!d) { el.textContent = 'VOICE ENGINE: UNAVAILABLE IN THIS BROWSER (TEXT + RADIO CUES ONLY)'; return; }
+        const v = (voices.find((x) => x.name === d.chosen) || {});
+        el.innerHTML = `VOICE: <b>${U.esc(d.chosen || 'none')}</b> ${d.chosen ? (v.local ? '<span class="g">OFFLINE</span>' : '<span class="amber">NEEDS INTERNET</span>') : ''} · ${d.voices} installed · ${!d.enabled ? '<span class="red">MUTED</span>' : d.broken ? '<span class="amber">RECOVERING</span>' : d.blocked ? '<span class="amber">WAITING FOR A CLICK</span>' : '<span class="g">READY</span>'}`;
+      };
+      vstat();
+      box.querySelector('#st-vtest').onclick = () => { MP.audio.unlock(); MP.Advisor && MP.Advisor.setVoiceEnabled(true); const cb = box.querySelector('#st-voice'); if (cb) cb.checked = true; MP.Advisor && MP.Advisor.say('Voice check. Channel is clear.', { priority: 2 }); setTimeout(vstat, 1200); setTimeout(vstat, 4000); };
       box.querySelector('#st-fs').onchange = (e) => { S.set('fullscreen', e.target.checked); if (e.target.checked) MP.enterFullscreen(); };
       box.addEventListener('click', (e) => {
         const b = e.target.closest('[data-a]'); if (!b) return;
