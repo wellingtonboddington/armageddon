@@ -326,6 +326,13 @@
     const blastR = isAir || isEMP ? 0 : R * (m.w === 'Orbital' ? 0.5 : 0.6);
     const x0 = Math.max(0, Math.floor(cx - R)), x1 = Math.min(W - 1, Math.ceil(cx + R));
     const y0 = Math.max(0, Math.floor(cy - R)), y1 = Math.min(H - 1, Math.ceil(cy + R));
+    // capitals in the blast: they are wrecked, not wiped off the map (the ground right around them is not lost)
+    const capsHit = [];
+    if (!isEMP && !isAir) for (const n of S.nations) {
+      if (!n || !n.alive || n.capital < 0 || n.id === m.owner || G.isAllied(m.owner, n.id)) continue;
+      if (U.dist2(n.capX + 0.5, n.capY + 0.5, cx, cy) <= R * R) capsHit.push(n);
+    }
+    const capSafe = (x, y) => { for (const n of capsHit) if (Math.abs(x - n.capX) <= 2 && Math.abs(y - n.capY) <= 2) return true; return false; };
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
       const d2 = (x - cx) * (x - cx) + (y - cy) * (y - cy);
       if (d2 > R * R) continue;
@@ -336,7 +343,7 @@
       if (o) hitN.set(o, (hitN.get(o) || 0) + 1);
       if (isEMP || isAir) continue;
       const bunker = o ? G.mod(S.nations[o], 'nukeDamage') : 1;
-      if (d2 <= blastR * blastR && S.rng() < bunker) { if (o) G.setOwner(t, 0, 0); G.markSoft(t, C.FALLOUT_SECONDS); }
+      if (d2 <= blastR * blastR && S.rng() < bunker && !(o && capsHit.length && capSafe(x, y))) { if (o) G.setOwner(t, 0, 0); G.markSoft(t, C.FALLOUT_SECONDS); }
       else if (o) G.markSoft(t, C.FALLOUT_SECONDS);
     }
     // troops & structures
@@ -382,6 +389,7 @@
       if (p && p.alive && Wp.inFalloutOf(p.id, cx, cy, R * 1.25)) MP.Game.notify('fallout.us', {});
     }
     S.clock -= (C.CLOCK[m.w] || 0) / (m.warhead ? C.WEAPON.MIRV.warheads : 1) * (owner && owner.isAlien ? 0.15 : 1); // alien fire is not human escalation
+    for (const n of capsHit) MP.Game.capitalStruck(n, m.owner, m.w);
     MP.FX && MP.FX.detonation(cx, cy, R, m.w, m.det);
     const p = G.player();
     const near = p && p.alive && (hitN.has(p.id) || m.owner === p.id);

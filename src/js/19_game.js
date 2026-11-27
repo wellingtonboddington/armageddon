@@ -46,7 +46,7 @@
     S.fallenRecent = (S.fallenRecent || 0) + 1;
     if (v.isPlayer) {
       Game.notify('end.defeat', {});
-      Game.endMatch('eliminated');
+      Game.endMatch(v.surrendered ? 'surrender' : 'eliminated');
       return;
     }
     if (by && by.isPlayer) Game.wire('OSINT', `${v.name} HAS FALLEN TO YOU`, 'good');
@@ -432,8 +432,90 @@
     MP.HUD && MP.HUD.flashDefcon();
   };
 
+  // ---------------- capital strikes: morale, ruins, rebuild or surrender ----------------
+  const CS = C.CAPITAL_STRIKE;
+  Game.rebuildCost = (n) => Math.round((CS.rebuildBase + CS.rebuildPerSqrt * Math.sqrt(Math.max(1, n.tiles))) * G.mod(n, 'rebuildCost') / 100) * 100;
+  Game.capitalStruck = function (v, byId, w) {
+    const S = G.S, a = S.nations[byId];
+    if (!v || !v.alive || v.isAlien || v.capital < 0 || S.phase !== 'play') return;
+    v.morale = Math.max(0, (v.morale == null ? 1 : v.morale) - CS.moraleHit * G.mod(v, 'moraleLoss') * (a ? G.mod(a, 'moraleShock') : 1));
+    const missile = w !== 'Orbital';
+    if (missile && a && a.alive && !G.isAllied(a.id, v.id)) {
+      const chance = Math.min(0.95, CS.surrender * G.mod(v, 'surrender') * G.mod(a, 'shockAwe'));
+      if (S.rng() < chance) { Game.surrender(v, a, 'strike'); return; }
+    }
+    const fresh = !v.capRuin;
+    if (fresh) v.capRuin = { deadline: S.t + CS.deadline * G.mod(v, 'rebuildDeadline'), by: byId, rebuildUntil: 0 };
+    else { v.capRuin.by = byId; if (v.capRuin.rebuildUntil) { v.capRuin.rebuildUntil = 0; } } // a rebuild under way is wrecked again
+    MP.FX && MP.FX.floatText(v.capX, v.capY, 'CAPITAL IN RUINS', [255, 68, 51]);
+    Game.wire('FLASH', `${v.name}'S CAPITAL LIES IN RUINS — REBUILD OR SURRENDER`, v.isPlayer ? 'bad' : 'flash');
+    if (v.isPlayer) { Game.notify('capital.ruined', { text: `Our capital is in ruins. Rebuild it within ${Math.round(CS.deadline * G.mod(v, 'rebuildDeadline') / 60)} minutes or the government surrenders.`, priority: 3 }); MP.SFX.play('siren'); }
+    else if (a && a.isPlayer) Game.notify('capital.ruined_enemy', { text: `Direct hit on the ${v.name} capital. Their government held, for now.`, priority: 2 });
+  };
+  Game.rebuildCapital = function (n) {
+    const S = G.S;
+    if (!n || !n.capRuin) return { ok: false, reason: 'Your capital stands' };
+    if (n.capRuin.rebuildUntil) return { ok: false, reason: 'Rebuilding already' };
+    const c = Game.rebuildCost(n);
+    if (n.credits < c) return { ok: false, reason: `Rebuilding costs ${U.fmtK(c)} credits` };
+    n.credits -= c;
+    n.capRuin.rebuildUntil = S.t + CS.rebuildTime * G.mod(n, 'rebuildSpeed');
+    if (n.isPlayer) { MP.SFX.play('build'); Game.wire('ADVISOR', 'CAPITAL REBUILD UNDER WAY', 'good'); }
+    return { ok: true, cost: c };
+  };
+  // the government signs everything over: land, buildings, half its treasury, a quarter of its army
+  Game.surrender = function (v, a, why) {
+    const S = G.S;
+    if (!v || !v.alive || !a || !a.alive || v === a) return false;
+    Game.wire('FLASH', `${v.name} SURRENDERS TO ${a.name}`, v.isPlayer ? 'bad' : a.isPlayer ? 'good' : 'flash');
+    if (a.isPlayer) { Game.notify('capital.surrender_enemy', { text: `${v.name} has surrendered. Their land and everything on it is ours.`, priority: 3 }); MP.SFX.play('milestone'); S.stats.capitals++; }
+    a.credits += v.credits * 0.5; a.uranium += v.uranium * 0.5; a.troops += v.troops * 0.25;
+    v.credits = 0; v.troops = 0;
+    for (const st of S.structs) if (st.owner === v.id) {
+      const arr = v.st[st.type]; const i = arr.indexOf(st); if (i >= 0) arr.splice(i, 1);
+      v.levels[st.type] = Math.max(0, (v.levels[st.type] || 0) - st.level);
+      st.owner = a.id; st.builtBy = a.id; a.st[st.type].push(st); a.levels[st.type] = (a.levels[st.type] || 0) + st.level;
+    }
+    S.roadsDirty = true;
+    v.capital = -1; v.capRuin = null; v.divs = []; v.surrendered = true;
+    for (let t = 0; t < World.N; t++) if (S.owner[t] === v.id) G.setOwner(t, a.id, C.DUG_IN_SECONDS);
+    G.eliminate(v.id, a.id);
+    return true;
+  };
+  Game.tickCapitals = function () {
+    const S = G.S;
+    for (const n of S.nations) {
+      if (!n || !n.alive || !n.spawned) continue;
+      if (n.morale == null) n.morale = 1;
+      if (!n.capRuin) { if (n.morale < 1) n.morale = Math.min(1, n.morale + CS.moraleRegen * G.mod(n, 'rally')); continue; }
+      n.morale = Math.max(0.15, n.morale - 0.0015);
+      const r = n.capRuin;
+      if (n.capital < 0) { n.capRuin = null; continue; }          // taken by land: the normal rules apply
+      if (r.rebuildUntil && S.t >= r.rebuildUntil && S.t <= r.deadline + 0.5) {
+        n.capRuin = null; n.morale = Math.min(1, n.morale + 0.15);
+        Game.wire('OSINT', `${n.name} REBUILDS ITS CAPITAL`, n.isPlayer ? 'good' : 'osint');
+        if (n.isPlayer) { Game.notify('capital.rebuilt', { text: 'The capital is rebuilt. The government stays in the fight.', priority: 2 }); MP.SFX.play('upgrade'); }
+        continue;
+      }
+      if (S.t >= r.deadline) {
+        let to = S.nations[r.by];
+        if (!to || !to.alive || G.isAllied(to.id, n.id)) {
+          to = null;
+          for (const o of n.wars) { const e = S.nations[o]; if (e && e.alive && !G.isAllied(e.id, n.id) && (!to || e.tiles > to.tiles)) to = e; }
+        }
+        if (to) { Game.surrender(n, to, 'deadline'); continue; }
+        n.capRuin = null; // nobody left to surrender to: the government survives
+        continue;
+      }
+      // AI governments rebuild as soon as they can pay for it
+      if (!n.isPlayer && !r.rebuildUntil && n.credits >= Game.rebuildCost(n)) Game.rebuildCapital(n);
+    }
+  };
+
   Game.tickRules = function (dt) {
     const S = G.S;
+    S._capT = (S._capT || 0) + dt;
+    if (S._capT >= 1) { S._capT = 0; Game.tickCapitals(); }
     const el = Game.elapsed();
     // clock
     const frozen = S.council.effects.some((e) => e.id === 'testban');
@@ -552,6 +634,7 @@
     overrun: { title: 'OUTPACED', win: false, line: 'end.defeat', desc: 'Another power — and its allies — claimed the world first.' },
     timeout_loss: { title: 'OUTLASTED', win: false, line: 'end.timeout_loss', desc: 'You survived the hour — but another nation held more of the world.' },
     resign: { title: 'WITHDRAWAL', win: false, line: 'end.resign', desc: 'You signed the instrument of surrender.' },
+    surrender: { title: 'CAPITULATION', win: false, line: 'end.defeat', desc: 'A missile found your capital, and your government signed the surrender.' },
   };
 
   Game.endMatch = function (kind, winnerId) {
@@ -647,12 +730,13 @@
       stats: n.stats, eliminatedBy: n.eliminatedBy, incomeAvg: n.incomeAvg,
       puppet: !!n.puppet, isAlien: !!n.isAlien, country: n.country || 0, skills: n.skills || [], donations: n.donations || 0, giftedT: n.giftedT || 0, giftedC: n.giftedC || 0, targetId: n.targetId || 0,
       grudge: n.ai ? Array.from(n.ai.grudge.entries()) : [],
+      capitalFallen: !!n.capitalFallen, morale: n.morale == null ? 1 : n.morale, capRuin: n.capRuin ? { left: n.capRuin.deadline - S.t, by: n.capRuin.by, reb: n.capRuin.rebuildUntil ? n.capRuin.rebuildUntil - S.t : 0 } : null,
     });
     return {
       v: 1, savedAt: Date.now(), opts: S.opts, seed: S.seed, rngState: S.rng.state(), t: S.t, phase: S.phase, playStart: S.playStart, spawnEnd: S.spawnEnd,
       matchSeconds: S.matchSeconds, peaceSeconds: S.peaceSeconds, winPct: S.winPct, clock: S.clock, defcon: S.defcon, firstNuke: S.firstNuke,
       owner: U.rleEncode(S.owner), soft: U.rleEncode(soft), home: U.rleEncode(S.home), prevOwner: U.rleEncode(S.prevOwner), nations,
-      puppetId: S.puppetId || 0, ghostForts: Array.from(S.ghostForts.entries()),
+      puppetId: S.puppetId || 0, ghostForts: Array.from(S.ghostForts.entries()), inverseForts: Array.from(S.inverseForts.entries()),
       alien: S.alienId ? { grace: S.alienGrace, site: S.alienSite, landed: !!S.alienLanded, revealed: !!S.alienRevealed } : null, presetMode: !!S.presetMode,
       structs: S.structs.map((s) => ({ id: s.id, type: s.type, owner: s.owner, tile: s.tile, level: s.level, build: s.build, buildMax: s.buildMax,
         disabledUntil: s.disabledUntil - S.t, ammo: s.ammo, reload: s.reload, ready: s.ready, siloT: s.siloT, depositTile: s.depositTile })),
@@ -716,6 +800,8 @@
       n.stats = nd.stats; n.eliminatedBy = nd.eliminatedBy; n.incomeAvg = nd.incomeAvg || C.BASE_INCOME;
       n.donations = nd.donations || 0; n.giftedT = nd.giftedT || 0; n.giftedC = nd.giftedC || 0; n.targetId = nd.targetId || 0;
       n.country = nd.country || 0;
+      n.capitalFallen = !!nd.capitalFallen; n.morale = nd.morale == null ? 1 : nd.morale;
+      if (nd.capRuin) n.capRuin = { deadline: S.t + nd.capRuin.left, by: nd.capRuin.by, rebuildUntil: nd.capRuin.reb ? S.t + nd.capRuin.reb : 0 };
       if (nd.isAlien) { n.isAlien = true; Object.assign(n.mods, { income: 5, uranium: 5, growth: 2, cap: 2.5, buildSpeed: 0.1, attackSpeed: 1.15, orbitalCd: 0.35, nukeDamage: 0.7, alien: 1, intercept: 1.2, defendCost: 1.6 }); S.alienId = n.id; }
       if (!n.isPlayer) { MP.AI.init(n); n.ai.grudge = new Map(nd.grudge || []); }
     }
@@ -727,6 +813,7 @@
     if (d.home) S.home.set(U.rleDecode(d.home, World.N));
     if (d.prevOwner) S.prevOwner.set(U.rleDecode(d.prevOwner, World.N));
     if (d.ghostForts) S.ghostForts = new Map(d.ghostForts);
+    if (d.inverseForts) S.inverseForts = new Map(d.inverseForts);
     const owner = U.rleDecode(d.owner, World.N);
     const soft = U.rleDecode(d.soft, World.N);
     for (let t = 0; t < World.N; t++) if (owner[t]) G.setOwner(t, owner[t], soft[t] || 0);

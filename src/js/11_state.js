@@ -22,6 +22,8 @@
       home: new Uint8Array(N),         // first nation to claim the tile from the wild (its homeland)
       prevOwner: new Uint8Array(N),    // owner before the latest capture
       ghostForts: new Map(),           // tile -> {owner, level}: crumbled Trench Warfare forts awaiting recapture
+      inverseForts: new Map(),         // tile -> {owner, x, y, r}: lost Scorched Earth forts (the owner retakes that ground 4× cheaper, 3× faster)
+      encircled: null,                 // Uint8Array: tiles in a Scorched Earth holdout pocket (value = nation id)
       capFalls: [],                    // capitals captured this tick (resolved after the land war step)
       structAt: new Map(),     // tile -> struct
       structs: [],
@@ -184,6 +186,7 @@
     if (t < World.N - w) refreshBorder(t + w);
     MP.Render && MP.Render.dirty(t);
     const st = S.structAt.get(t);
+    if (o && S.inverseForts.size) { const z = S.inverseForts.get(t); if (z && z.owner === o) S.inverseForts.delete(t); } // inverse fort retaken
     if (st) G.structCaptured(st, prev, o);
     else if (o && S.ghostForts.size) {
       const gf = S.ghostForts.get(t);
@@ -219,10 +222,29 @@
   };
 
   // ---------------- structures ----------------
-  G.structCost = function (n, type) {
+  // fort range and strength by doctrine. Normal forts: range doubles per level, attackers pay ×5 / move ×3 slower.
+  // Fortress: range stays 50 tiles, but every level adds ×5 cost and ×3 slow (max ×15 / ×15).
+  // Trench Warfare: range doubles up to 100 tiles, and every level adds the same, up to ×7 / ×7.
+  G.fortRange = function (n, level) {
+    const rm = G.mod(n, 'fortRadius');
+    if (G.has(n, 'fortStats')) return C.FORT_RADIUS * rm;
+    const r = C.FORT_RADIUS * Math.pow(2, Math.max(0, level - 1));
+    return (G.has(n, 'trench') ? Math.min(100, r) : r) * rm;
+  };
+  G.fortMults = function (n, level) {
+    if (G.has(n, 'fortStats')) return [Math.min(15, C.FORT_COST_MULT * level), Math.min(15, C.FORT_SLOW * level)];
+    if (G.has(n, 'trench')) return [Math.min(7, C.FORT_COST_MULT * level), Math.min(7, C.FORT_SLOW * level)];
+    return [C.FORT_COST_MULT, C.FORT_SLOW];
+  };
+
+  // upgrade = building on one of your own of the same type. Fortress: new forts climb the price ladder by
+  // how many forts you own (not their levels) and every upgrade costs what your first fort did.
+  G.structCost = function (n, type, upgrade) {
     const b = C.BUILD[type];
-    const lv = n.levels[type] || 0;
+    let lv = n.levels[type] || 0;
+    if (type === 'fort' && G.has(n, 'fortFlat')) lv = upgrade ? 0 : (n.st.fort ? n.st.fort.length : 0);
     let credits = b.base + b.a * Math.pow(lv, b.p);
+    if (type === 'fort' && upgrade) credits *= G.mod(n, 'fortUpgrade');
     let u = b.u ? b.u : 0;
     let mul = G.mod(n, 'cost_' + type);
     if (b.defense || type === 'radar') mul *= G.mod(n, 'cost_defense');
@@ -277,6 +299,9 @@
     const pn = S.nations[prev];
     if (!o) { G.removeStruct(s); return; }
     const scorched = G.has(pn, 'scorched');
+    if (s.type === 'fort' && scorched && pn) {                               // a burnt Scorched Earth fort becomes an inverse fort
+      S.inverseForts.set(s.tile, { owner: prev, x: s.x, y: s.y, r: G.fortRange(pn, s.level), tile: s.tile });
+    }
     if (s.type === 'fort' && G.has(pn, 'trench') && s.builtBy === prev) {   // trench forts crumble, and return with their owner
       S.ghostForts.set(s.tile, { owner: prev, level: s.level });
       G.removeStruct(s);
@@ -345,6 +370,7 @@
     }
     // a captured capital brings the whole nation down — except Scorched Earth, whose pockets fight on
     if (a && !G.has(v, 'scorched') && !v.isAlien) G.S.capFalls.push({ v: vid, by: by }); // the armada's mothership simply relocates
+    if (a && G.has(v, 'scorched')) v.capitalFallen = true; // Scorched Earth fights on — and every remaining pocket costs ×5 to crush
   };
   G.resolveCapFalls = function () {
     const S = G.S;

@@ -49,6 +49,7 @@
     </div>
 
     <div class="hud-bl">
+      <div id="h-divs" class="panel divs brk" style="display:none"></div>
       <div id="advisor-hud" class="panel brk"></div>
       <div class="panel wire brk"><div class="ph"><span class="t">WIRE // ALL SOURCES</span></div><div id="h-wire"></div></div>
     </div>
@@ -76,6 +77,8 @@
 
     <div class="hud-tc">
       <div class="banner" id="h-banner" style="display:none"><span id="h-banner-t"></span><button class="x" id="h-banner-x">✕</button></div>
+      <div class="capalert" id="h-capalert" style="display:none"></div>
+      <div class="morale-chip" id="h-morale-wrap" style="display:none" title="Morale: a missile on your capital shakes the nation. Low morale slows recruiting, makes your attacks cost more and your land easier to take. It recovers while the capital stands."><b id="h-morale">100%</b></div>
       <div id="h-toasts"></div>
     </div>
     <div id="h-radial" class="radial" style="display:none"></div>
@@ -86,7 +89,7 @@
     const q = (id) => document.getElementById(id);
     ['h-defcon', 'h-date', 'h-match', 'h-alive', 'h-clock', 'h-clockface', 'h-peace', 'h-peace-wrap', 'h-peace-ico', 'h-landbar', 'h-landpct', 'h-coord', 'h-terrain', 'h-pips', 'h-ro-nation',
       'h-lb-rows', 'h-att-rows', 'h-att-count', 'h-wire', 'h-offers', 'h-build', 'h-grow', 'h-troops', 'h-cap', 'h-troopbar', 'h-ratio-pct', 'h-send', 'h-income', 'h-credits',
-      'h-tiles', 'h-uranium', 'h-ubar', 'h-dock', 'h-banner', 'h-banner-t', 'h-toasts', 'h-radial', 'h-tip', 'h-council', 'h-pause', 'h-effects', 'h-speed', 'h-mini'].forEach((id) => { els[id] = q(id); });
+      'h-tiles', 'h-uranium', 'h-ubar', 'h-dock', 'h-banner', 'h-banner-t', 'h-toasts', 'h-radial', 'h-tip', 'h-council', 'h-pause', 'h-effects', 'h-speed', 'h-mini', 'h-front', 'h-divs', 'h-capalert', 'h-morale', 'h-morale-wrap'].forEach((id) => { els[id] = q(id); });
     // hourglass icon (inline SVG — glyph set has none)
     root.querySelector('.st-row2 .chip').innerHTML = `<svg class="ico" viewBox="0 0 16 16"><path d="M4 2h8v2.5L9.3 8 12 11.5V14H4v-2.5L6.7 8 4 4.5z" fill="none" stroke="#ece6cf" stroke-width="1.4"/><path d="M6 12.5h4L8 10z" fill="#ffd21f"/></svg><b id="h-match">40:00</b>`;
     els['h-match'] = q('h-match');
@@ -146,13 +149,14 @@
     factory: 'Sends convoys to cities, ports and factories within ' + C.FACTORY_RANGE + ' tiles — income for both ends. Each level doubles convoys and gold.',
     hub: 'Links factories, cities and ports within ' + C.HUB_RANGE + ' tiles with white roads: convoys 25% faster and reach two stops.',
     enrich: 'Must sit on a free ☢ deposit. Removes the 200 uranium cap and adds +' + C.ENRICH_RATE + ' U/s per level.',
-    fort: 'Within ' + C.FORT_RADIUS + ' tiles (doubling per level) attackers pay ×5 troops and advance ×3 slower.',
+    fort: 'Within ' + C.FORT_RADIUS + ' tiles (doubling per level) attackers pay ×5 troops and advance ×3 slower. Fortress: range stays 50 but each level adds ×5 / ×3 (max ×15). Trench: range up to 100, each level adds up to ×7 / ×7.',
     warship: 'Built at your nearest port. Hunts warships and transports, seizes enemy trade ships. Click it, then the sea, to set a patrol.',
     silo: 'Launches researched missiles. One ready missile per level; reloads in ' + C.SILO_RELOAD + 's.',
   };
   function buildTip(type) {
     const p = G.player(); const c = p ? G.structCost(p, type) : { credits: C.BUILD[type].base, u: C.BUILD[type].u };
-    return `<b>${C.BUILD[type].name}</b> <span class="dim">[${C.BUILD[type].key}]</span><br>${BUILD_DESC[type] || defDesc(type)}<br><span class="y">${U.fmtK(c.credits)} credits${c.u ? ' · ' + c.u + ' U' : ''}</span> <span class="dim">· place on your own to upgrade</span>`;
+    const up = p && type === 'fort' && G.has(p, 'fortFlat') ? G.structCost(p, type, true) : null;
+    return `<b>${C.BUILD[type].name}</b> <span class="dim">[${C.BUILD[type].key}]</span><br>${BUILD_DESC[type] || defDesc(type)}<br><span class="y">${U.fmtK(c.credits)} credits${c.u ? ' · ' + c.u + ' U' : ''}</span> <span class="dim">· place on your own to upgrade${up ? ' (always ' + U.fmtK(up.credits) + ')' : ''}</span>`;
   }
   function defDesc(type) {
     const d = C.DEFENSE[type];
@@ -267,11 +271,13 @@
     if (S.opts.mode === 'watch') return;
     const up = k.toUpperCase();
     if (up === 'T') { HUD.toggleFront(); return; }
+    if (up === 'R') { HUD.dispatchDiv('arm'); return; }
+    if (up === 'F') { HUD.dispatchDiv('inf'); return; }
     for (const t of C.BUILD_ORDER.concat(C.DEFENSE_ORDER)) if (C.BUILD[t].key === up) { HUD.setBuildMode(t); return; }
     for (const w of C.WEAPON_ORDER) if (C.WEAPON[w].key === up) { HUD.weaponClick(w); return; }
     if (k === '+' || k === '=') { HUD.ratio = Math.min(1, HUD.ratio + 0.05); HUD.syncRatio(); }
     if (k === '-' || k === '_') { HUD.ratio = Math.max(0.05, HUD.ratio - 0.05); HUD.syncRatio(); }
-    if (up === 'F') { const p = G.player(); if (p && p.capital >= 0) MP.Render.centerOn(p.capX, p.capY, Math.max(4, MP.Render.cam.z)); }
+    if (up === 'C' || k === 'Home') { const p = G.player(); if (p && p.capital >= 0) MP.Render.centerOn(p.capX, p.capY, Math.max(4, MP.Render.cam.z)); }
     if (up === 'L') { HUD.launchAll = !HUD.launchAll; HUD.syncLaunchAll(); MP.SFX.play('toggle'); }
     const pan = 60 / MP.Render.cam.z;
     if (k === 'ArrowLeft' || up === 'A') MP.Render.pan(pan * MP.Render.cam.z, 0);
@@ -317,10 +323,14 @@
       if (!e.shiftKey) HUD.clearMode();
       return;
     }
-    // divisions: click one to select it, then click your land to move it (stack by placing it behind another)
-    if (p.divPlan && p.divs) {
-      let hit = null, hd = 22 * 22;
-      for (const d of p.divs) { if (d._sx == null) continue; const dd = (d._sx - H.sx) ** 2 + (d._sy - 14 - H.sy) ** 2; if (dd < hd) { hd = dd; hit = d; } }
+    if (mode && mode.kind === 'div') {
+      HUD.dispatchDiv(mode.type);
+      if (!e.shiftKey) HUD.clearMode();
+      return;
+    }
+    // divisions: click one to select it, then click the front to send it there
+    if (p.divs && p.divs.length) {
+      const hit = HUD.divAt(p, H.sx, H.sy);
       const selD = p.divs.find((d) => d.sel);
       if (hit) {
         // clicking a stack cycles through the divisions in it
@@ -330,10 +340,15 @@
         const nxt = stack[(cur + 1) % stack.length];
         if (cur === stack.length - 1 && stack.length === 1) { MP.SFX.play('close'); return; }
         nxt.sel = true; MP.SFX.play('click');
-        HUD.toast(`${nxt.type === 'arm' ? 'Armoured' : 'Infantry'} division · ${nxt.gear} · ${U.fmtInt(nxt.size)}${nxt.trainedFull ? ' · trained' : ''} — click your land to move it`, 'info');
+        HUD.toast(`${nxt.type === 'arm' ? 'Armoured' : 'Infantry'} division · ${nxt.gear} · ${U.fmtInt(nxt.size)}${nxt.trainedFull ? ' · trained' : ''} — click the front to send it there · right-click sends it home`, 'info');
         return;
       }
-      if (selD && S.owner[H.t] === p.id) { MP.Div.moveTo(selD, H.wx, H.wy); selD.sel = false; MP.SFX.play('send'); return; }
+      if (selD && MP.Div.nearOwn(p.id, Math.floor(H.wx), Math.floor(H.wy), 45) >= 0) {
+        selD.mode = 'garrison'; selD.sel = false;
+        const r = MP.Div.dispatch(p, selD.type, H.wx, H.wy);
+        MP.SFX.play(r.ok ? 'send' : 'error'); if (!r.ok) HUD.toast(r.reason, 'bad');
+        return;
+      }
     }
     // select own warship?
     const R = MP.Render;
@@ -408,7 +423,7 @@
     MP.SFX.play('open');
     HUD.syncSlots();
   };
-  HUD.clearMode = function () { HUD.mode = null; HUD.banner(null); HUD.syncSlots(); MP.SFX.play('close'); };
+  HUD.clearMode = function () { HUD.mode = null; HUD.banner(null); HUD.syncSlots(); MP.SFX.play('close'); HUD.renderDivs && HUD.renderDivs(true); };
   HUD.banner = function (html, kind) {
     const b = els['h-banner'];
     if (!html) { b.style.display = 'none'; return; }
@@ -435,6 +450,19 @@
     if (HUD.mode) { HUD.clearMode(); return; }
     if (MP.Render.selectedShip && !World.land[H.t]) { MP.Naval.assignPatrol(MP.Render.selectedShip, H.wx, H.wy); MP.Render.selectedShip = null; HUD.toast('Patrol assigned', 'info'); return; }
     if (MP.Render.selectedShip) { MP.Render.selectedShip = null; return; }
+    const p = G.player();
+    if (p && p.divs && S.opts.mode !== 'watch') {
+      const hit = HUD.divAt(p, H.sx, H.sy);
+      if (hit) {
+        const stack = p.divs.filter((d) => d._sx === hit._sx && d._sy === hit._sy && d.mode !== 'garrison').sort((a, b) => (b.holdAt || 0) - (a.holdAt || 0));
+        const go = e.shiftKey ? stack : stack.slice(0, 1);
+        for (const d of go) MP.Div.sendHome(d);
+        MP.SFX.play('close');
+        HUD.toast(go.length > 1 ? `${go.length} divisions return to reserve` : `${go[0].type === 'arm' ? 'Armoured' : 'Infantry'} division returns to reserve`, 'info');
+        HUD.renderDivs(true);
+        return;
+      }
+    }
     if (!HUD._rcHint) { HUD._rcHint = true; HUD.toast('Orders menu: middle-click a nation (or Alt+click)', 'info'); }
   };
   HUD.onRadialClick = function (e) {
@@ -568,6 +596,26 @@
       <div class="ni-list"><span>At war with</span>${wars.length ? wars.slice(0, 8).map((a) => U.esc(a.name)).join(', ') : '<i class="dim">nobody</i>'}</div>`);
   };
 
+  // ---------------- divisions: R armour · F infantry · T whole army ----------------
+  HUD.divAt = function (p, sx, sy) {
+    let hit = null, hd = 24 * 24;
+    for (const d of p.divs) { if (d._hx == null) continue; const dd = (d._hx - sx) ** 2 + (d._hy - sy) ** 2; if (dd < hd) { hd = dd; hit = d; } }
+    return hit;
+  };
+  HUD.dispatchDiv = function (type) {
+    const S = G.S, p = G.player();
+    if (!S || !p || !p.alive || S.phase !== 'play') return;
+    const H = MP.Render.hover;
+    if (H.t < 0) return;
+    const r = MP.Div.dispatch(p, type, H.wx, H.wy);
+    if (!r.ok) { MP.SFX.play('error'); HUD.toast(r.reason, 'bad'); return; }
+    MP.SFX.play(type === 'arm' ? 'attack' : 'send');
+    const d = r.div, o = d.front ? S.nations[d.front] : null;
+    HUD.toast(`${type === 'arm' ? 'Armoured' : 'Infantry'} division → ${o ? 'the ' + o.name + ' front' : 'this spot'}${r.stack > 1 ? ` · STACK ${r.stack}/${C.DIV.stackMax}` : ' · press again here to stack'}`, 'good');
+    MP.FX && MP.FX.ping(d.ax, d.ay, type === 'arm' ? [255, 176, 0] : [236, 230, 207]);
+    HUD.renderDivs(true);
+  };
+
   // ---------------- divisions / front planning (T) ----------------
   HUD.toggleFront = function (forceEnemy) {
     const S = G.S, p = G.player();
@@ -593,48 +641,69 @@
     HUD.renderFront(true);
   };
   let frontSig = '';
+  // the T plan: a slim banner over the build bar (the DIVISIONS panel holds everything else)
   HUD.renderFront = function (force) {
     const S = G.S, p = G.player(), box = els['h-front'];
+    HUD.renderDivs(force);
     if (!box) return;
-    if (!S || !p || !p.alive || S.opts.mode === 'watch' || S.phase !== 'play') { box.innerHTML = ''; frontSig = ''; return; }
-    const divs = p.divs || [];
-    const plan = p.divPlan;
-    const arm = divs.filter((d) => d.type === 'arm').length, inf = divs.length - arm;
-    const untrained = divs.filter((d) => !d.trainedFull && !d.training).length;
-    const training = divs.filter((d) => d.training).length;
-    const total = divs.reduce((a, d) => a + d.size, 0);
-    const sig = [plan ? plan.enemy + ':' + plan.prepared : 0, divs.length, arm, untrained, training, p.divLevel || 0, Math.round(total / 500), Math.round(p.credits / 1000)].join('|');
+    const plan = p && p.alive && S && S.phase === 'play' ? p.divPlan : null;
+    const sig = plan ? plan.enemy + ':' + plan.prepared : '';
     if (!force && sig === frontSig) return;
     frontSig = sig;
-    if (!plan) {
-      box.innerHTML = divs.length ? `<div class="fp-mini"><img class="ico" src="${MP.Icons.url('tank', '#ffd21f', 32)}"> ${divs.length} DIVISIONS · ${U.fmtK(total)} · <span class="dim">PRESS T ON A NEIGHBOUR TO MAN THAT FRONT</span></div>` : '';
-      return;
-    }
+    if (!plan) { box.innerHTML = ''; return; }
     const e = S.nations[plan.enemy];
+    box.innerHTML = `<div class="fp-mini"><img class="ico" src="${MP.Icons.url('tank', '#ffd21f', 32)}"> WHOLE ARMY ON THE ${MP.Flags.img(e.flag, 'flag xs')} <b>${U.esc(e.name)}</b> FRONT ·
+      ${plan.prepared ? '<span class="g">PREPARED +' + (G.has(p, 'ironLine') ? 25 : 15) + '%</span>' : '<span class="amber">UNDER FIRE</span>'} · <span class="dim">T AGAIN TO STAND DOWN</span> <button class="btn sm danger" data-fa="recall">RECALL</button></div>`;
+    box.onclick = (ev) => { if (ev.target.closest('[data-fa="recall"]')) HUD.toggleFront(plan.enemy); };
+  };
+
+  // the DIVISIONS panel: always on screen during a match — what you have, what it costs, how to use it
+  let divSig = '';
+  HUD.renderDivs = function (force) {
+    const S = G.S, p = G.player(), box = els['h-divs'];
+    if (!box) return;
+    if (!S || !p || !p.alive || S.opts.mode === 'watch' || S.phase !== 'play') { if (box.style.display !== 'none') box.style.display = 'none'; divSig = ''; return; }
+    const divs = p.divs || [];
+    const arm = divs.filter((d) => d.type === 'arm'), inf = divs.filter((d) => d.type === 'inf');
+    const free = (l) => l.filter((d) => d.mode === 'garrison').length;
+    const untrained = divs.filter((d) => !d.trainedFull && !d.training).length;
+    const training = divs.filter((d) => d.training).length, trained = divs.filter((d) => d.trainedFull).length;
+    const total = divs.reduce((a, d) => a + d.size, 0);
     const tc = MP.Div.trainCost(p) * untrained, uc = MP.Div.upgradeCost(p), rc = MP.Div.raiseCost(p);
-    box.innerHTML = `<div class="fp panel brk">
-      <div class="fp-h"><span class="t">⚑ FRONT</span> ${MP.Flags.img(e.flag, 'flag xs')} <b>${U.esc(e.name)}</b>
-        <span class="dim">${divs.length} DIVISIONS · ${inf} INF · ${arm} ARM · ${U.fmtK(total)} TROOPS · LV ${p.divLevel || 0}</span>
-        ${plan.prepared ? '<span class="g">PREPARED +' + (G.has(p, 'ironLine') ? 25 : 15) + '%</span>' : '<span class="amber">UNDER FIRE</span>'}</div>
-      <div class="fp-b">
-        <button class="btn sm" data-fa="train" ${untrained ? '' : 'disabled'}>TRAIN ALL${untrained ? ' · ' + U.fmtK(tc) : training ? ' · ' + training + ' IN TRAINING' : ' · DONE'}</button>
-        <button class="btn sm" data-fa="upgrade">UPGRADE · ${U.fmtK(uc)}</button>
-        <button class="btn sm" data-fa="raise">+1 DIVISION · ${U.fmtK(rc)}</button>
-        <button class="btn sm" data-fa="spread">AUTO-SPREAD</button>
-        <button class="btn sm danger" data-fa="recall">RECALL</button>
+    const maxed = (p.divLevel || 0) >= C.DIV.upgradeMax;
+    const sig = [divs.length, arm.length, free(arm), free(inf), untrained, training, p.divLevel || 0, Math.round(total / 500), p.credits >= tc, p.credits >= uc, p.credits >= rc, HUD.mode && HUD.mode.kind === 'div' ? HUD.mode.type : ''].join('|');
+    if (!force && sig === divSig) return;
+    divSig = sig;
+    box.style.display = '';
+    const md = HUD.mode && HUD.mode.kind === 'div' ? HUD.mode.type : '';
+    const row = (type, list, key, label, icon) => `<button class="dv-row ${md === type ? 'on' : ''}" data-dv="${type}" title="Hover your front line and press ${key}, or click here then click the front">
+        <img class="ico" src="${MP.Icons.url(icon, type === 'arm' ? '#ffb000' : '#ece6cf', 32)}"><b>${label}</b><span class="n">${list.length}</span>
+        <span class="dim">${free(list)} IN RESERVE</span><span class="key">${key}</span></button>`;
+    box.innerHTML = `<div class="ph"><span class="t">⚑ DIVISIONS</span><span class="dim">LV ${p.divLevel || 0} · ${U.fmtK(total)} TROOPS${trained ? ' · ' + trained + ' TRAINED' : ''}</span></div>
+      ${row('arm', arm, 'R', 'ARMOUR', 'tank')}${row('inf', inf, 'F', 'INFANTRY', 'troops')}
+      <div class="dv-btns">
+        <button class="btn sm" data-fa="train" ${untrained && p.credits >= tc ? '' : 'disabled'} title="Fully trained divisions count double. Only divisions that are not trained yet can be trained.">TRAIN ALL · ${untrained ? U.fmtK(tc) : training ? training + ' TRAINING' : 'DONE'}</button>
+        <button class="btn sm" data-fa="upgrade" ${!maxed && p.credits >= uc ? '' : 'disabled'} title="Every division gets bigger and stronger">${maxed ? 'MAX LEVEL' : 'UPGRADE · ' + U.fmtK(uc)}</button>
+        <button class="btn sm" data-fa="raise" ${p.credits >= rc ? '' : 'disabled'} title="Raise one more division">+1 DIVISION · ${U.fmtK(rc)}</button>
       </div>
-      <div class="fp-hint dim">Click a flag, then click your land to move it · place one behind another to stack (max 3) · T again stands down</div></div>`;
+      <div class="dv-help">Hover your front and press <b>R</b> (armour) or <b>F</b> (infantry): that division goes there and buffs the land around it, attacking and defending. Press again on the same spot to <b>stack</b> up to 3. <b>T</b> sends the whole army to a front. Right-click a flag sends it home.</div>`;
     box.onclick = (ev) => {
-      const b = ev.target.closest('[data-fa]'); if (!b) return;
+      const dv = ev.target.closest('[data-dv]');
+      if (dv) {
+        const type = dv.dataset.dv;
+        if (HUD.mode && HUD.mode.kind === 'div' && HUD.mode.type === type) { HUD.clearMode(); HUD.renderDivs(true); return; }
+        HUD.mode = { kind: 'div', type };
+        HUD.banner(`<img class="ico" src="${MP.Icons.url(type === 'arm' ? 'tank' : 'troops', '#ffd21f', 32)}"> Click your front line to send ${type === 'arm' ? 'an armoured' : 'an infantry'} division there · shift-click to send several`);
+        MP.SFX.play('open'); HUD.renderDivs(true); return;
+      }
+      const b = ev.target.closest('[data-fa]'); if (!b || b.disabled) return;
       const a = b.dataset.fa;
       let r = null;
       if (a === 'train') r = MP.Div.trainAll(p);
       if (a === 'upgrade') r = MP.Div.upgrade(p);
       if (a === 'raise') r = MP.Div.raise(p);
-      if (a === 'spread') { MP.Div.spread(p, plan.enemy, divs.slice().sort((x, y) => (y.type === 'arm') - (x.type === 'arm')), { stack: divs.length > 8 }); MP.SFX.play('send'); }
-      if (a === 'recall') { HUD.toggleFront(plan.enemy); return; }
-      if (r) { if (r.ok) { MP.SFX.play('upgrade'); HUD.toast(a === 'train' ? `Training ${r.count} divisions` : a === 'upgrade' ? `Divisions upgraded to level ${p.divLevel}` : 'New division raised', 'good'); } else { MP.SFX.play('error'); HUD.toast(r.reason, 'bad'); } }
-      HUD.renderFront(true);
+      if (r) { if (r.ok) { MP.SFX.play('upgrade'); HUD.toast(a === 'train' ? `Training ${r.count} divisions (${C.DIV.trainTime}s)` : a === 'upgrade' ? `Divisions upgraded to level ${p.divLevel}` : 'New division raised — it waits in reserve', 'good'); } else { MP.SFX.play('error'); HUD.toast(r.reason, 'bad'); } }
+      HUD.renderDivs(true);
     };
   };
 
@@ -915,6 +984,7 @@
         setH(els['h-ro-nation'], `${MP.Flags.img(n.flag, 'flag sm')} <b style="color:${U.rgb(U.mix(n.color, [255, 255, 255], 0.35))}">${U.esc(n.name)}</b>` +
           (atWar ? ' <span class="red">⊕</span>' : '') + ` <span class="dim">≈${U.fmtK(n.troops)}</span> <span class="dim">▣ ${U.fmtK(n.tiles)}</span> ` +
           (soft ? '<span class="soft">SOFT ×1</span>' : `<span class="dug">DUG IN ×${C.DUG_IN_MULT}</span>`) +
+          (n.capRuin ? ' <span class="red">CAPITAL IN RUINS</span>' : '') + (n.morale != null && n.morale < 0.95 ? ` <span class="amber">MORALE ${Math.round(n.morale * 100)}%</span>` : '') +
           (allies.length ? `<div class="ro-allies">${allies.map((a) => MP.Flags.img(a.flag, 'flag xs')).join('')}</div>` : ''));
       } else setH(els['h-ro-nation'], World.land[H.t] ? '<span class="dim">UNCLAIMED LAND</span>' : '');
     }
@@ -979,6 +1049,26 @@
     els['h-ubar'].parentElement.title = p.uCapped ? 'No enrichment plant: uranium capped at 200' : `+${(p.uRate || 0).toFixed(1)} U/s`;
     HUD.syncSlots();
     HUD.renderFront();
+    // capital in ruins: rebuild before the deadline or the government surrenders
+    const mor = p.morale == null ? 1 : p.morale;
+    els['h-morale-wrap'].style.display = mor < 0.995 ? '' : 'none';
+    setT(els['h-morale'], 'MORALE ' + Math.round(mor * 100) + '%' + (p.capRuin ? ' · FALLING' : ' · RECOVERING'));
+    els['h-morale-wrap'].className = 'morale-chip' + (mor < 0.5 ? ' low' : '');
+    const ca = els['h-capalert'];
+    if (p.capRuin) {
+      const r = p.capRuin, left = Math.max(0, r.deadline - S.t), cost = MP.Game.rebuildCost(p);
+      ca.style.display = '';
+      setH(ca, r.rebuildUntil
+        ? `<b>⚠ CAPITAL REBUILDING</b> · ready in ${Math.ceil(r.rebuildUntil - S.t)}s · deadline ${U.fmtTime(left)}`
+        : `<b>⚠ CAPITAL IN RUINS</b> · the government surrenders in <b class="t">${U.fmtTime(left)}</b> unless it is rebuilt (${C.CAPITAL_STRIKE.rebuildTime}s) <button class="btn sm ${p.credits >= cost ? 'primary' : ''}" data-rebuild>REBUILD · ${U.fmtK(cost)}</button>`);
+      ca.onclick = (e) => { if (!e.target.closest('[data-rebuild]')) return; const res = MP.Game.rebuildCapital(p); if (!res.ok) { MP.SFX.play('error'); HUD.toast(res.reason, 'bad'); } else HUD.toast('Rebuilding the capital', 'good'); };
+    } else if (ca.style.display !== 'none') { ca.style.display = 'none'; setH(ca, ''); }
+    // first war of the match: show how divisions work
+    if (!S._divTip && S.phase === 'play' && p.divs && p.divs.length && S.attacks.some((a) => !a.done && a.to && (a.from === p.id || a.to === p.id))) {
+      S._divTip = true;
+      HUD.toast('DIVISIONS: hover the front and press R (armour) or F (infantry) to reinforce that spot. Press again on the same spot to stack. T sends the whole army.', 'info');
+      MP.Game.wire('VESPER', 'FRONT ACTIVE — R SENDS ARMOUR, F SENDS INFANTRY TO THE CURSOR. PRESS AGAIN TO STACK.', 'good');
+    }
   };
 
   // ---------------- end screen ----------------

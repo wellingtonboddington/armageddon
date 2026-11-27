@@ -403,7 +403,7 @@
     for (const s of e.st.silo) cands.push([s.x, s.y, 3]);
     for (const s of e.st.city) cands.push([s.x, s.y, 2 + s.level * 0.3]);
     for (const s of e.st.factory) cands.push([s.x, s.y, 1.5]);
-    if (e.capital >= 0) cands.push([e.capX, e.capY, 2.5]);
+    if (e.capital >= 0) cands.push([e.capX, e.capY, e.capRuin ? 3.6 : 3.1]); // a capital hit can make the whole nation surrender
     if (!cands.length) return null;
     cands.sort((a, b) => b[2] - a[2] + (S.rng() - 0.5));
     return [cands[0][0] + S.rng.range(-2, 2), cands[0][1] + S.rng.range(-2, 2)];

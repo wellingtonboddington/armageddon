@@ -32,10 +32,15 @@
     softImg = softCtx.createImageData(World.W, World.H);
     softData = new Uint32Array(softImg.data.buffer);
     stripeCv = document.createElement('canvas'); stripeCtx = stripeCv.getContext('2d');
-    const pc = document.createElement('canvas'); pc.width = 10; pc.height = 10;
+    // fresh land: bold white "/" hatching with a dark companion line, readable on any territory colour
+    // (cosmetic territory patterns run the other way, so the two never look alike)
+    const pc = document.createElement('canvas'); pc.width = 12; pc.height = 12;
     const pcx = pc.getContext('2d');
-    pcx.strokeStyle = '#fff'; pcx.lineWidth = 2.2;
-    pcx.beginPath(); pcx.moveTo(-2, 12); pcx.lineTo(12, -2); pcx.moveTo(8, 12); pcx.lineTo(12, 8); pcx.moveTo(-2, 2); pcx.lineTo(2, -2); pcx.stroke();
+    const diag = (c) => { pcx.moveTo(-4, c + 4); pcx.lineTo(c + 4, -4); };
+    pcx.strokeStyle = '#fff'; pcx.lineWidth = 2.6;
+    pcx.beginPath(); diag(0); diag(12); diag(24); pcx.stroke();
+    pcx.strokeStyle = 'rgba(0,0,0,0.85)'; pcx.lineWidth = 1.4;
+    pcx.beginPath(); diag(5); diag(17); pcx.stroke();
     stripePat = stripeCtx.createPattern(pc, 'repeat');
     dirtyFlag = new Uint8Array(World.N);
     cam.z = R.minZoom() * 1.05;
@@ -150,7 +155,7 @@
     let a = 105;
     let col = c;
     switch (n.pattern) {
-      case 'hazard': if (((x + y) >> 2) & 1) { col = [20, 18, 12]; a = 70; } else a = 105; break;
+      case 'hazard': if (((x - y + 4096) >> 2) & 1) { col = [c[0] * 0.55 | 0, c[1] * 0.55 | 0, c[2] * 0.55 | 0]; a = 115; } else a = 105; break; // tonal \\ bands (fresh land hatching runs /)
       case 'grid': if (x % 6 === 0 || y % 6 === 0) a = 150; break;
       case 'dots': if (x % 4 === 0 && y % 4 === 0) a = 190; break;
       case 'chevron': if (((x + Math.abs((y % 8) - 4)) % 8) < 2) a = 160; break;
@@ -302,7 +307,7 @@
           stripeCtx.fillStyle = stripePat;
           stripeCtx.fillRect(0, 0, bw, bh);
         }
-        ctx.save(); ctx.setTransform(1, 0, 0, 1, shx * DPR, shy * DPR); ctx.globalAlpha = 0.22;
+        ctx.save(); ctx.setTransform(1, 0, 0, 1, shx * DPR, shy * DPR); ctx.globalAlpha = 0.4;
         ctx.drawImage(stripeCv, 0, 0);
         ctx.restore();
       }
@@ -432,7 +437,7 @@
     const mode = H && H.mode;
     if (mode && mode.kind === 'build' && R.hover.t >= 0) {
       const type = mode.type;
-      const rangeOf = { factory: C.FACTORY_RANGE, hub: C.HUB_RANGE, fort: C.FORT_RADIUS, radar: C.DEFENSE.radar.range * (p ? G.mod(p, 'radarRange') : 1),
+      const rangeOf = { factory: C.FACTORY_RANGE, hub: C.HUB_RANGE, fort: p ? G.fortRange(p, 1) : C.FORT_RADIUS, radar: C.DEFENSE.radar.range * (p ? G.mod(p, 'radarRange') : 1),
         sam: C.DEFENSE.sam.range, abm: C.DEFENSE.abm.range, laser: C.DEFENSE.laser.range, aegis: C.DEFENSE.aegis.range }[type];
       if (rangeOf) circle(R.hover.x + 0.5, R.hover.y + 0.5, rangeOf, 'rgba(255,240,200,0.55)', 'rgba(255,240,200,0.04)');
       // highlight upgrade targets of this type
@@ -458,7 +463,7 @@
     // hovering one of our structures: show its range
     const hs = R.hoverStruct;
     if (hs && !mode) {
-      const rr = hs.type === 'fort' ? C.FORT_RADIUS * Math.pow(2, hs.level - 1) : hs.type === 'factory' ? C.FACTORY_RANGE : hs.type === 'hub' ? C.HUB_RANGE :
+      const rr = hs.type === 'fort' ? G.fortRange(S.nations[hs.owner], hs.level) : hs.type === 'factory' ? C.FACTORY_RANGE : hs.type === 'hub' ? C.HUB_RANGE :
         C.DEFENSE[hs.type] ? (C.DEFENSE[hs.type].range * (hs.type === 'radar' ? (1 + 0.25 * (hs.level - 1)) * G.mod(S.nations[hs.owner], 'radarRange') : 1)) : 0;
       if (rr) circle(hs.x, hs.y, rr, 'rgba(255,240,200,0.5)', 'rgba(255,240,200,0.03)');
     }
@@ -630,8 +635,23 @@
         ctx.strokeStyle = '#ffd21f'; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.arc(sx, sy, sz * 0.75 + Math.sin(timeNow * 3) * 1.5, 0, 7); ctx.stroke();
       }
-      const spr = MP.Icons.sprite('capital', n === p ? [255, 210, 31] : n.color, Math.round(sz * DPR), { round: true });
+      const ruin = n.capRuin;
+      const spr = MP.Icons.sprite('capital', ruin ? [120, 110, 90] : n === p ? [255, 210, 31] : n.color, Math.round(sz * DPR), { round: true });
       ctx.drawImage(spr, sx - sz / 2, sy - sz / 2, sz, sz);
+      if (ruin) {
+        // cracked, burning capital with the surrender countdown running around it
+        const left = U.clamp((ruin.deadline - S.t) / C.CAPITAL_STRIKE.deadline, 0, 1);
+        ctx.strokeStyle = 'rgba(255,68,51,0.9)'; ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.moveTo(sx - sz * 0.3, sy - sz * 0.35); ctx.lineTo(sx - sz * 0.05, sy - sz * 0.05); ctx.lineTo(sx - sz * 0.2, sy + sz * 0.15); ctx.lineTo(sx + sz * 0.05, sy + sz * 0.38);
+        ctx.moveTo(sx - sz * 0.05, sy - sz * 0.05); ctx.lineTo(sx + sz * 0.3, sy - sz * 0.2); ctx.stroke();
+        ctx.strokeStyle = ruin.rebuildUntil ? '#3ee6ff' : '#ff4433'; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.arc(sx, sy, sz * 0.85, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * left); ctx.stroke();
+        if (cam.z > 1.2) {
+          ctx.font = `bold 10px ${MP.FONT_MONO}`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+          ctx.fillStyle = ruin.rebuildUntil ? '#3ee6ff' : '#ff4433';
+          ctx.fillText(ruin.rebuildUntil ? 'REBUILDING' : 'RUINS · ' + U.fmtTime(Math.max(0, ruin.deadline - S.t)), sx, sy - sz * 0.95);
+        }
+      }
       // chevron marker above enemy capital at war with us
       if (p && n !== p && n.wars.has(p.id)) {
         ctx.fillStyle = '#ff4433';
@@ -640,81 +660,137 @@
     }
   }
 
-  // divisions: few, big flags on the line (infantry with artillery/drones, armour with tanks/motorised).
-  // Divisions that sit on top of each other on screen merge into one stack marker (×N) so the line stays readable.
+  // divisions: few, big flags on the line (infantry with artillery/drones, armour with tanks/motorised),
+  // drawn like a war-map animation: a waving flag on a pole over a NATO-style unit plate. Positions are
+  // smoothed every frame so movement glides; divisions overlapping on screen merge into one stack marker.
+  let divLastT = 0;
+  function natoSymbol(x, y, w, h, arm, inf, col) {
+    ctx.strokeStyle = col; ctx.lineWidth = 1.3;
+    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    if (inf) { ctx.beginPath(); ctx.moveTo(x + 1, y + 1); ctx.lineTo(x + w - 1, y + h - 1); ctx.moveTo(x + w - 1, y + 1); ctx.lineTo(x + 1, y + h - 1); ctx.stroke(); }
+    if (arm) {
+      const rx = w * 0.32, ry = h * 0.27, cx = x + w / 2, cy = y + h / 2;
+      ctx.beginPath(); ctx.moveTo(cx - rx + ry, cy - ry); ctx.lineTo(cx + rx - ry, cy - ry); ctx.arc(cx + rx - ry, cy, ry, -Math.PI / 2, Math.PI / 2); ctx.lineTo(cx - rx + ry, cy + ry); ctx.arc(cx - rx + ry, cy, ry, Math.PI / 2, Math.PI * 1.5); ctx.closePath(); ctx.stroke();
+    }
+  }
+  function arrow(x0, y0, x1, y1, col, width, dash) {
+    const dx = x1 - x0, dy = y1 - y0, L = Math.hypot(dx, dy);
+    if (L < 6) return;
+    const ux = dx / L, uy = dy / L, hl = Math.min(9, L * 0.4);
+    ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = width;
+    if (dash) ctx.setLineDash(dash);
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1 - ux * hl * 0.8, y1 - uy * hl * 0.8); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x1 - ux * hl - uy * hl * 0.55, y1 - uy * hl + ux * hl * 0.55); ctx.lineTo(x1 - ux * hl + uy * hl * 0.55, y1 - uy * hl - ux * hl * 0.55); ctx.closePath(); ctx.fill();
+  }
   function drawDivisions() {
     const S = G.S, p = G.player();
     if (!MP.Div) return;
-    const fw = U.clamp(cam.z * 7, 24, 40), fh = Math.round(fw * 0.66);
+    const dt = Math.min(0.1, Math.max(0, timeNow - divLastT)); divLastT = timeNow;
+    const kS = 1 - Math.exp(-dt * 8);
+    const fw = Math.round(U.clamp(cam.z * 7.5, 28, 50)), fh = Math.round(fw * 0.62);
     const plan = p && p.divPlan;
     const vis = [];
     for (const n of S.nations) {
       if (!n || !n.alive || !n.divs || !n.divs.length) continue;
       for (const d of n.divs) {
-        d._sx = null;
+        // glide toward the simulated position; snap on a long jump (and play the deploy animation)
+        if (d.rx == null || U.dist2(d.rx, d.ry, d.x, d.y) > 70 * 70) { d.rx = d.x; d.ry = d.y; }
+        else { d.rx += (d.x - d.rx) * kS; d.ry += (d.y - d.ry) * kS; }
+        if (d.deployT !== d._depSeen) { d._depSeen = d.deployT; d._dep = timeNow; }
+        d._sx = null; d._hx = null;
         if (!MP.Div.visibleTo(d, p)) continue;
-        if (!onScreen(d.x, d.y, 50)) continue;
-        const [sx, sy] = R.w2s(d.x, d.y);
-        d._sx = sx; d._sy = sy;
+        if (!onScreen(d.rx, d.ry, 50)) continue;
+        const [sx, sy] = R.w2s(d.rx, d.ry);
+        d._px = sx; d._py = sy;
         vis.push(d);
       }
     }
-    // supply lines from factory / hub while planning
-    if (plan) for (const d of vis) {
-      if (d.owner !== p.id || !d.src) continue;
-      const [ax, ay] = R.w2s(d.src.x, d.src.y);
-      ctx.strokeStyle = 'rgba(255,210,31,0.28)'; ctx.setLineDash([3, 5]); ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(d._sx, d._sy); ctx.stroke(); ctx.setLineDash([]);
-    }
-    // screen-space clustering per owner
-    const groups = [];
-    const near = fw * 0.85;
+    // orders: where own divisions are heading, and the point a held division is pushing toward
     for (const d of vis) {
+      if (!p || d.owner !== p.id) continue;
+      const [tx, ty] = R.w2s(d.tx, d.ty);
+      if (U.dist2(d.rx, d.ry, d.tx, d.ty) > 6) arrow(d._px, d._py, tx, ty, 'rgba(255,210,31,0.55)', 1.4, [5, 4]);
+      else if (d.mode === 'hold' && !d.slot && U.dist2(d.ax, d.ay, d.tx, d.ty) > 9) { const [ax, ay] = R.w2s(d.ax, d.ay); arrow(d._px, d._py, ax, ay, d.type === 'arm' ? 'rgba(255,176,0,0.8)' : 'rgba(236,230,207,0.7)', 2.2); }
+      if ((plan || d.sel) && d.src) { const [ax, ay] = R.w2s(d.src.x, d.src.y); ctx.strokeStyle = 'rgba(255,210,31,0.22)'; ctx.setLineDash([2, 5]); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(d._px, d._py); ctx.stroke(); ctx.setLineDash([]); }
+    }
+    // a stack sent to one spot is one formation: one marker at its lead
+    const units = [], byAim = new Map();
+    for (const d of vis) {
+      if (d.mode === 'hold' && d.ax != null) {
+        const k = d.owner + ':' + Math.round(d.ax * 4) + ':' + Math.round(d.ay * 4);
+        let u = byAim.get(k);
+        if (!u) { u = { owner: d.owner, px: d._px, py: d._py, lead: 99, list: [] }; byAim.set(k, u); units.push(u); }
+        u.list.push(d);
+        if ((d.slot || 0) < u.lead) { u.lead = d.slot || 0; u.px = d._px; u.py = d._py; }
+      } else units.push({ owner: d.owner, px: d._px, py: d._py, list: [d] });
+    }
+    // then merge per owner wherever markers would overlap on screen (a marker is about two flags wide)
+    const groups = [];
+    const nearX = fw * 2.4, nearY = fw * 1.8;
+    for (const u of units) {
       let g = null;
-      for (const q of groups) if (q.owner === d.owner && Math.abs(q.sx - d._sx) < near && Math.abs(q.sy - d._sy) < near * 0.8) { g = q; break; }
-      if (!g) { g = { owner: d.owner, sx: d._sx, sy: d._sy, list: [] }; groups.push(g); }
-      g.list.push(d);
+      for (const q of groups) if (q.owner === u.owner && Math.abs(q.ax - u.px) < nearX && Math.abs(q.ay - u.py) < nearY) { g = q; break; }
+      if (!g) { g = { owner: u.owner, ax: u.px, ay: u.py, list: [] }; groups.push(g); }
+      for (const d of u.list) g.list.push(d);
     }
     for (const g of groups) {
       const n = S.nations[g.owner];
-      const flag = MP.Flags.canvas(n.flag, 60, 40);
       const mine = p && n.id === p.id;
-      const list = g.list, lead = list[0];
-      const sx = g.sx, sy = g.sy;
+      const list = g.list;
+      const sx = Math.round(g.ax), sy = Math.round(g.ay);
+      const flag = MP.Flags.canvas(n.flag, 60, 40);
       const size = list.reduce((a, d) => a + d.size, 0);
-      const arm = list.filter((d) => d.type === 'arm').length;
+      const arm = list.some((d) => d.type === 'arm'), inf = list.some((d) => d.type === 'inf');
       const trained = list.every((d) => d.trainedFull), unsup = list.some((d) => !d.supplied);
-      const fx = sx - fw / 2, fy = sy - fh - 8;
-      // stacked flags peek out behind the lead one
-      for (let k = Math.min(2, list.length - 1); k >= 1; k--) { ctx.globalAlpha = 0.7; ctx.drawImage(flag, fx + k * 4, fy - k * 4, fw, fh); ctx.globalAlpha = 1; ctx.strokeStyle = 'rgba(10,10,8,0.9)'; ctx.lineWidth = 1; ctx.strokeRect(fx + k * 4 + 0.5, fy - k * 4 + 0.5, fw - 1, fh - 1); }
-      ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(fx + 2, fy + 2, fw, fh);
-      ctx.fillStyle = '#d8d2bc'; ctx.fillRect(sx - 1, fy, 2, fh + 8);
-      ctx.drawImage(flag, fx, fy, fw, fh);
-      ctx.lineWidth = trained ? 2 : 1;
-      ctx.strokeStyle = trained ? '#ffd21f' : unsup ? '#ff4433' : 'rgba(10,10,8,0.9)';
-      if (unsup && !trained) ctx.setLineDash([3, 2]);
-      ctx.strokeRect(fx + 0.5, fy + 0.5, fw - 1, fh - 1); ctx.setLineDash([]);
+      const dep = Math.max(...list.map((d) => d._dep || -9));
+      const da = U.clamp((timeNow - dep) / 0.45, 0, 1), dz = 1 + (1 - da) * 0.5;
+      ctx.save();
+      ctx.globalAlpha = 0.25 + 0.75 * da;
+      if (da < 1) { ctx.strokeStyle = U.rgb(n.color, 1 - da); ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(sx, sy + 2, fw * (0.4 + da), fw * (0.14 + da * 0.35), 0, 0, 7); ctx.stroke(); }
+      ctx.translate(sx, sy); ctx.scale(dz, dz); ctx.translate(-sx, -sy);
+      // plate (unit counter) on the ground, pole, waving flag
+      const label = U.fmtK(size);
+      ctx.font = `bold ${Math.round(U.clamp(fw * 0.3, 9, 13))}px ${MP.FONT_MONO}`;
+      const tw = ctx.measureText(label).width;
+      const ph = Math.round(U.clamp(fw * 0.42, 12, 17)), symW = Math.round(ph * 1.45);
+      const pw = symW + tw + 12, px = sx - pw / 2, py = sy - ph / 2;
+      ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.beginPath(); ctx.ellipse(sx, sy + ph / 2 + 2, pw * 0.55, 3.5, 0, 0, 7); ctx.fill();
+      const poleTop = py - fh - 9;
+      ctx.strokeStyle = 'rgba(10,10,8,0.85)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(px + 3, py); ctx.lineTo(px + 3, poleTop); ctx.stroke();
+      ctx.strokeStyle = '#d8d2bc'; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(px + 3, py); ctx.lineTo(px + 3, poleTop - 1); ctx.stroke();
+      ctx.fillStyle = '#d8d2bc'; ctx.beginPath(); ctx.arc(px + 3, poleTop - 1.5, 1.8, 0, 7); ctx.fill();
+      // stacked divisions: furled flags peeking out behind
+      for (let k = Math.min(2, list.length - 1); k >= 1; k--) { ctx.globalAlpha *= 0.85; ctx.drawImage(flag, px + 4 + k * 4, poleTop - k * 3, fw * 0.92, fh * 0.92); ctx.globalAlpha = (0.25 + 0.75 * da); }
+      const SL = 8, ph0 = (n.id * 1.7) % 6.28, amp = fh * 0.075;
+      for (let i = 0; i < SL; i++) {
+        const w0 = fw / SL, dyw = Math.sin(timeNow * 3.1 + i * 0.8 + ph0) * amp * (i / (SL - 1));
+        const shade = 0.12 * Math.sin(timeNow * 3.1 + i * 0.8 + ph0 + 1.2) * (i / (SL - 1));
+        ctx.fillStyle = 'rgba(10,10,8,0.9)'; ctx.fillRect(px + 4 + i * w0 - 0.5, poleTop + dyw - 1, w0 + 1, fh + 2);
+        ctx.drawImage(flag, i * 60 / SL, 0, 60 / SL, 40, px + 4 + i * w0, poleTop + dyw, w0 + 0.6, fh);
+        if (shade) { ctx.fillStyle = shade > 0 ? `rgba(255,255,255,${shade})` : `rgba(0,0,0,${-shade * 1.6})`; ctx.fillRect(px + 4 + i * w0, poleTop + dyw, w0 + 0.6, fh); }
+      }
+      if (trained) { ctx.strokeStyle = '#ffd21f'; ctx.lineWidth = 1.5; ctx.strokeRect(px + 3.5, poleTop - 0.5, fw + 1, fh + 1); }
       if (list.length > 1) {
         ctx.font = `bold 10px ${MP.FONT_MONO}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillStyle = '#0a0a08'; ctx.fillRect(fx + fw - 6, fy - 6, 16, 12); ctx.fillStyle = '#ffd21f'; ctx.fillText('×' + list.length, fx + fw + 2, fy);
+        const bx = px + 4 + fw + 3, by = poleTop + 1;
+        ctx.fillStyle = '#0a0a08'; ctx.fillRect(bx - 9, by - 6, 18, 12); ctx.strokeStyle = '#ffd21f'; ctx.lineWidth = 1; ctx.strokeRect(bx - 8.5, by - 5.5, 17, 11);
+        ctx.fillStyle = '#ffd21f'; ctx.fillText('×' + list.length, bx, by + 0.5);
       }
-      // type badge + strength
-      const label = U.fmtK(size);
-      ctx.font = `bold ${Math.round(U.clamp(fw * 0.34, 9, 13))}px ${MP.FONT_MONO}`;
-      const tw = ctx.measureText(label).width, bh = Math.round(U.clamp(fw * 0.42, 11, 16));
-      const icons = (arm ? 1 : 0) + (arm < list.length ? 1 : 0);
-      const bw = bh * icons + tw + 8, bx = sx - bw / 2, by = sy - 6;
-      ctx.fillStyle = 'rgba(10,10,8,0.88)'; ctx.fillRect(bx, by, bw, bh);
-      ctx.strokeStyle = mine ? '#ffd21f' : U.rgb(n.color); ctx.lineWidth = 1; ctx.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
-      let ix = bx + 2;
-      if (arm) { MP.Icons.drawGlyph(ctx, 'tank', ix, by + 1, bh - 2, '#ffb000'); ix += bh; }
-      if (arm < list.length) { MP.Icons.drawGlyph(ctx, lead.gear === 'drones' ? 'drone' : 'gun', ix, by + 1, bh - 2, '#ece6cf'); ix += bh; }
+      ctx.fillStyle = 'rgba(10,10,8,0.92)'; ctx.fillRect(px, py, pw, ph);
+      ctx.lineWidth = trained ? 2 : 1.2;
+      ctx.strokeStyle = unsup ? '#ff4433' : mine ? '#ffd21f' : U.rgb(U.mix(n.color, [255, 255, 255], 0.25));
+      if (unsup) ctx.setLineDash([3, 2]);
+      ctx.strokeRect(px + 0.5, py + 0.5, pw - 1, ph - 1); ctx.setLineDash([]);
+      natoSymbol(px + 4, py + 3, symW - 2, ph - 6, arm, inf, arm && !inf ? '#ffb000' : '#ece6cf');
+      ctx.font = `bold ${Math.round(U.clamp(fw * 0.3, 9, 13))}px ${MP.FONT_MONO}`;
       ctx.fillStyle = '#ece6cf'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-      ctx.fillText(label, ix + 2, by + bh / 2 + 0.5);
+      ctx.fillText(label, px + symW + 6, py + ph / 2 + 0.5);
       const tr = list.find((d) => d.training);
-      if (tr) { ctx.strokeStyle = '#3ee6ff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(sx, fy + fh / 2, fw * 0.62, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * tr.trained); ctx.stroke(); }
-      if (list.some((d) => d.sel)) { ctx.strokeStyle = '#ffd21f'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(sx, fy + fh / 2, fw * 0.75 + Math.sin(timeNow * 6) * 2, 0, 7); ctx.stroke(); }
-      for (const d of list) { d._sx = sx; d._sy = sy; }
+      if (tr) { ctx.strokeStyle = '#3ee6ff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(px, py + ph + 2); ctx.lineTo(px + pw * tr.trained, py + ph + 2); ctx.stroke(); }
+      if (list.some((d) => d.sel)) { ctx.strokeStyle = '#ffd21f'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(sx, sy, pw * 0.7 + Math.sin(timeNow * 6) * 2, ph * 1.4, 0, 0, 7); ctx.stroke(); }
+      ctx.restore();
+      for (const d of list) { d._sx = sx; d._sy = sy; d._hx = sx; d._hy = sy - fh * 0.45; }
     }
   }
 
@@ -845,6 +921,16 @@
       ctx.save(); ctx.strokeStyle = 'rgba(255,210,31,0.85)'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]); ctx.lineDashOffset = timeNow * 10;
       ctx.beginPath(); ctx.arc(sx, sy, tf.r * cam.z, 0, 7); ctx.stroke(); ctx.restore();
     }
+    // Scorched Earth inverse forts: the ground around a burnt fort its old owner storms 4× cheaper, 3× faster
+    if (p && S.inverseForts && S.inverseForts.size) for (const z of S.inverseForts.values()) {
+      if (z.owner !== p.id && !p.wars.has(z.owner)) continue;
+      if (!S.nations[z.owner] || !S.nations[z.owner].alive || S.owner[z.tile] === z.owner || !onScreen(z.x, z.y, z.r)) continue;
+      const [sx, sy] = R.w2s(z.x, z.y);
+      ctx.save(); ctx.strokeStyle = z.owner === p.id ? 'rgba(255,120,40,0.8)' : 'rgba(255,68,51,0.5)'; ctx.lineWidth = 1.6; ctx.setLineDash([3, 6]); ctx.lineDashOffset = -timeNow * 8;
+      ctx.beginPath(); ctx.arc(sx, sy, z.r * cam.z, 0, 7); ctx.stroke(); ctx.setLineDash([]);
+      if (cam.z > 1.2) { ctx.font = `bold 10px ${MP.FONT_MONO}`; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,140,60,0.9)'; ctx.fillText(z.owner === p.id ? 'INVERSE FORT · −75% · 3× FASTER' : 'INVERSE FORT', sx, sy - z.r * cam.z - 4); }
+      ctx.restore();
+    }
     if (p && S.ghostForts && S.ghostForts.size && cam.z > 1.5) for (const [t, gf] of S.ghostForts) {
       if (gf.owner !== p.id) continue;
       const x = t % World.W, y = (t / World.W) | 0;
@@ -866,7 +952,7 @@
       ctx.restore();
       ctx.font = `700 ${U.clamp(fs * 0.8, 10, 17)}px ${MP.FONT_HEAD}`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.lineJoin = 'round';
-      const txt = U.fmtInt(pk.troops) + (pk.breakout ? ' Breaking Out' : ' Encircled');
+      const txt = U.fmtInt(pk.troops) + (pk.breakout ? ' Breaking Out' : pk.holdout ? ' Holding Out ×5' : ' Encircled');
       ctx.strokeStyle = 'rgba(4,4,3,0.85)'; ctx.lineWidth = 3; ctx.strokeText(txt, sx, sy - r - 3);
       ctx.fillStyle = pk.nation === p?.id ? '#ff8a7a' : 'rgba(236,230,207,0.92)'; ctx.fillText(txt, sx, sy - r - 3);
     }

@@ -37,6 +37,9 @@
     DUG_IN_MULT: 2,            // obs ×2
     FORT_COST_MULT: 5, FORT_SLOW: 3, FORT_RADIUS: 50, // designer
     CAPITAL_GUARD_R: 10, CAPITAL_GUARD_COST: 3, CAPITAL_GUARD_SLOW: 2, // capital garrison zone: beheading a nation takes real force
+    // a missile on the capital: morale drops; 50% the government surrenders on the spot, else the capital lies in
+    // ruins (not relocated) and must be rebuilt within 3 minutes or the nation surrenders
+    CAPITAL_STRIKE: { surrender: 0.5, deadline: 180, rebuildTime: 20, rebuildBase: 8000, rebuildPerSqrt: 200, moraleHit: 0.35, moraleRegen: 0.004 }, // designer
     SUPPLY_FREE: 120, SUPPLY_SPAN: 300, SUPPLY_MAX_PENALTY: 0.6,
 
     TERRAIN_COST: [2, 3, 3, 3],          // biome: plains, forest, desert, tundra (troops/tile, unclaimed)
@@ -100,7 +103,7 @@
     fort:    { key: '6', name: 'Fort', icon: 'fort', base: 1500, a: 1500, p: 1.0, time: 4, u: 0 },
     warship: { key: '7', name: 'Warship', icon: 'warship', base: 6000, a: 6000, p: 1.0, time: 8, u: 0, unit: true },
     silo:    { key: '8', name: 'Missile Silo', icon: 'silo', base: 20000, a: 12000, p: 1.2, time: 10, u: 100 },
-    radar:   { key: 'R', name: 'Radar', icon: 'radar', base: 12000, a: 7000, p: 1.2, time: 6, u: 0, defense: true },
+    radar:   { key: 'K', name: 'Radar', icon: 'radar', base: 12000, a: 7000, p: 1.2, time: 6, u: 0, defense: true },
     sam:     { key: 'G', name: 'SAM Site', icon: 'sam', base: 15000, a: 9000, p: 1.2, time: 6, u: 50, defense: true },
     abm:     { key: 'Y', name: 'ABM Site', icon: 'abm', base: 30000, a: 18000, p: 1.2, time: 8, u: 150, defense: true },
     laser:   { key: 'U', name: 'Laser Array', icon: 'laser', base: 45000, a: 25000, p: 1.2, time: 10, u: 250, defense: true },
@@ -142,8 +145,8 @@
       desc: 'Attackers lose 15% more troops on your land · Land you lose stays fresh 2× longer · Retaking your homeland costs 25% fewer troops, is 3× faster and ignores forts you built there · Your attacks advance 10% slower',
       mods: { defendCost: 1.15, attackSpeed: 0.9, homeland: 1 } },
     { id: 'fortress', name: 'Fortress', icon: 'fort',
-      desc: 'Forts cost half · Your attacks advance 10% slower',
-      mods: { cost_fort: 0.5, attackSpeed: 0.9 } },
+      desc: 'Forts cost half, and upgrading one always costs what your first fort did · Fort range stays 50 tiles, but every level adds ×5 troop cost and ×3 slower attackers (up to ×15 / ×15) · Your attacks advance 10% slower',
+      mods: { cost_fort: 0.5, fortFlat: 1, fortStats: 1, attackSpeed: 0.9 } },
     { id: 'deterrence', name: 'Deterrence', icon: 'shield',
       desc: 'Defences and radar cost 30% less · Troops grow 15% slower',
       mods: { cost_defense: 0.7, growth: 0.85 } },
@@ -151,10 +154,10 @@
       desc: 'Silos build 40% faster and reload 30% faster · 30% fewer starting troops',
       mods: { siloBuild: 0.6, siloReload: 0.7, startTroops: 0.7 } },
     { id: 'trench', name: 'Trench Warfare', icon: 'fort', original: true, quote: 'Fight me like a man.',
-      desc: 'Land you take digs in instantly — you never hold fresh land · Land invaders take from you stays fresh 2× longer · Your forts crumble when occupied and rebuild themselves when you retake the ground · Counters Scorched Earth · Your attacks advance 15% slower',
-      mods: { trench: 1, attackSpeed: 0.85 } },
+      desc: 'Land you take digs in instantly — you never hold fresh land · Forts cost half; every fort level adds ×5 troop cost and ×3 slower attackers (up to ×7 / ×7), range doubles up to 100 tiles · Land invaders take from you stays fresh 2× longer · Your forts crumble when occupied and rebuild themselves when you retake the ground · Counters Scorched Earth · Your attacks advance 15% slower',
+      mods: { trench: 1, cost_fort: 0.5, attackSpeed: 0.85 } },
     { id: 'scorched', name: 'Scorched Earth', icon: 'fire', original: true,
-      desc: 'Land you lose stays fresh forever — an inverse fort — and its buildings burn · Retaking it costs half · Losing your capital does not end you: your pockets fight on · No other drawback',
+      desc: 'Land you lose stays fresh forever and its buildings burn · Retaking it costs half · A fort you lose becomes an inverse fort: inside its old range you pay 75% fewer troops and move 3× faster · Encircled pockets never surrender and cost the enemy ×5 · Losing your capital does not end you: every remaining pocket costs ×5 to crush · No other drawback',
       mods: { scorched: 1 } },
     { id: 'blitzkrieg', name: 'Blitzkrieg', icon: 'bolt', original: true,
       desc: 'Attacks advance 30% faster · Enemy pockets collapse 25% faster · Breakthroughs 50% stronger · Lose 50% more troops when you do not outnumber the enemy front',
@@ -228,6 +231,17 @@
     { id: 'reserve', branch: 'eco', cost: 2, req: 'treasury', name: 'National Reserve', desc: '+2 divisions.', mods: { reservePool: 1 } },
     { id: 'intel', branch: 'state', cost: 1, req: 'tongue', name: 'Intelligence Network', desc: 'Always see enemy divisions within 40 tiles of your border.', mods: { intel: 1 } },
     { id: 'propaganda', branch: 'state', cost: 1, name: 'Propaganda Bureau', desc: 'Troops grow 5% faster; income +4%.', mods: { growth: 1.05, income: 1.04 } },
+    // round 3: capital strikes, morale, sending divisions, forts, pockets
+    { id: 'resolve', branch: 'state', cost: 2, name: 'Unbreakable Resolve', desc: 'A missile on your capital makes your government surrender half as often (25% instead of 50%).', mods: { surrender: 0.5 } },
+    { id: 'cog', branch: 'state', cost: 2, req: 'resolve', name: 'Continuity of Government', desc: 'A ruined capital gives you 4:30 instead of 3:00 to rebuild; rebuilding is twice as fast and 30% cheaper.', mods: { rebuildDeadline: 1.5, rebuildSpeed: 0.5, rebuildCost: 0.7 } },
+    { id: 'rally', branch: 'state', cost: 1, name: 'Rally the Nation', desc: 'Morale recovers twice as fast, and capital hits shake it 30% less.', mods: { rally: 2, moraleLoss: 0.7 } },
+    { id: 'decap', branch: 'war', cost: 2, req: 'airsup', name: 'Decapitation Strike', desc: 'Your missile hits on enemy capitals force a surrender 30% more often (65%) and shake morale 50% harder.', mods: { shockAwe: 1.3, moraleShock: 1.5 } },
+    { id: 'sappers', branch: 'war', cost: 2, req: 'shock', name: 'Sappers', desc: 'Enemy forts cost you 25% fewer troops and slow you 25% less.', mods: { sappers: 0.75 } },
+    { id: 'forcedmarch', branch: 'div', cost: 1, req: 'armordoc', name: 'Forced March', desc: 'Armoured divisions you send with R reach the front 60% faster.', mods: { armorDispatch: 1.6 } },
+    { id: 'motorpool', branch: 'div', cost: 1, req: 'rapid', name: 'Motor Pools', desc: 'Infantry divisions you send with F reach the front 60% faster.', mods: { infDispatch: 1.6 } },
+    { id: 'mixedstack', branch: 'div', cost: 2, req: 'depth', name: 'Combined Stacks', desc: 'Where armour and infantry stand together, they attack and hold 15% harder.', mods: { mixedStack: 1.15 } },
+    { id: 'masons', branch: 'def', cost: 1, name: 'Master Masons', desc: 'Forts build twice as fast, and fort upgrades cost 30% less.', mods: { fortBuild: 0.5, fortUpgrade: 0.7 } },
+    { id: 'laststand', branch: 'def', cost: 2, req: 'ironline', name: 'Last Stand', desc: 'Your encircled pockets cost the enemy twice the troops and hold out 15 seconds longer (stacks with Scorched Earth).', mods: { lastStand: 2 } },
   ];
 
   // field directives — picked at 10% and 25% land (original mechanic)

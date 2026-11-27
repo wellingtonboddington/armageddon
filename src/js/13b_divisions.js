@@ -113,7 +113,13 @@
       const mv = G.mod(n, 'divMove');
       for (const d of divs) {
         const dx = d.tx - d.x, dy = d.ty - d.y, L = Math.hypot(dx, dy);
-        if (L > 0.05) { const sp = (d.type === 'arm' ? D.moveArm : D.moveInf) * mv * dt * 2.2; if (L <= sp) { d.x = d.tx; d.y = d.ty; } else { d.x += dx / L * sp; d.y += dy / L * sp; } }
+        if (L > 0.05) {
+          // cruise, then ease into position over the last few tiles
+          let base = (d.type === 'arm' ? D.moveArm : D.moveInf) * mv * 2.2;
+          if (d.mode === 'hold') base *= d.type === 'arm' ? G.mod(n, 'armorDispatch') : G.mod(n, 'infDispatch');
+          const sp = base * dt * U.clamp(L / 3, 0.25, 1);
+          if (L <= sp) { d.x = d.tx; d.y = d.ty; } else { d.x += dx / L * sp; d.y += dy / L * sp; }
+        }
       }
       if (!slow) continue;
       // once a second: spawn, refill, supply, training, assignment, stacks
@@ -135,14 +141,110 @@
           d.trained += 1 / (D.trainTime * G.mod(n, 'trainTime'));
           if (d.trained >= 1) { d.trained = 1; d.training = false; d.trainedFull = true; if (n.isPlayer) MP.FX.ping(d.x, d.y, [255, 210, 31]); }
         }
-        // retreat if the ground under it was lost
+        // retreat if the ground under it was lost (falls back smoothly)
         const t = Math.round(d.x) + Math.round(d.y) * World.W;
-        if (S.owner[t] !== n.id) { const u = G.nearestOwned(n.id, Math.round(d.x), Math.round(d.y), 12); if (u >= 0) { d.x = d.tx = u % World.W + 0.5; d.y = d.ty = ((u / World.W) | 0) + 0.5; } }
+        if (S.owner[t] !== n.id && d.mode !== 'hold') { const u = nearOwn(n.id, Math.round(d.x), Math.round(d.y), 14); if (u >= 0) { d.tx = u % World.W + 0.5; d.ty = ((u / World.W) | 0) + 0.5; } }
       }
+      Div.updateHolds(n);
       Div.assign(n);
       Div.computeStacks(n);
     }
   };
+
+  // ---------------- dispatch (R armour · F infantry): divisions as buffs on a chosen spot ----------------
+  // strict ring search for our own ground (no fallback)
+  function nearOwn(id, x, y, r) {
+    const S = G.S, w = World.W, h = World.H;
+    for (let rr = 0; rr <= r; rr++) {
+      for (let dy = -rr; dy <= rr; dy++) {
+        const yy = y + dy; if (yy < 0 || yy >= h) continue;
+        const step = Math.abs(dy) === rr ? 1 : 2 * rr;
+        for (let dx = -rr; dx <= rr; dx += step || 1) {
+          const xx = x + dx; if (xx < 0 || xx >= w) continue;
+          if (S.owner[xx + yy * w] === id) return xx + yy * w;
+        }
+      }
+    }
+    return -1;
+  }
+  Div.nearOwn = nearOwn;
+  const AIM_SNAP = 6;
+  // where a held division stands: our ground nearest the aimed point; 2nd/3rd of a stack stand right behind
+  function holdTarget(n, d) {
+    const W = World.W;
+    const t = nearOwn(n.id, Math.round(d.ax), Math.round(d.ay), 45);
+    if (t < 0) return null;
+    let x = t % W + 0.5, y = ((t / W) | 0) + 0.5;
+    if (d.slot) {
+      let vx = x - d.ax, vy = y - d.ay, L = Math.hypot(vx, vy);
+      if (L < 1.5) { vx = n.sx / Math.max(1, n.tiles) - x; vy = n.sy / Math.max(1, n.tiles) - y; L = Math.hypot(vx, vy) || 1; }
+      const u = nearOwn(n.id, Math.round(x + vx / L * 3.4 * d.slot), Math.round(y + vy / L * 3.4 * d.slot), 6);
+      if (u >= 0) { x = u % W + 0.5; y = ((u / W) | 0) + 0.5; }
+    }
+    return [x, y];
+  }
+  Div.holdGroup = function (n, ax, ay) {
+    return listOf(n).filter((d) => d.mode === 'hold' && U.dist2(d.ax, d.ay, ax, ay) < AIM_SNAP * AIM_SNAP).sort((a, b) => a.holdAt - b.holdAt || a.id - b.id);
+  };
+  // once a second: slots within each stack, follow the front as it moves, give up spots we can no longer reach
+  Div.updateHolds = function (n) {
+    const S = G.S, holds = listOf(n).filter((d) => d.mode === 'hold');
+    if (!holds.length) return;
+    const seen = new Set();
+    for (const d of holds) {
+      if (seen.has(d)) continue;
+      const g = Div.holdGroup(n, d.ax, d.ay);
+      g.forEach((e, i) => { e.slot = i; e.ax = g[0].ax; e.ay = g[0].ay; seen.add(e); });
+    }
+    for (const d of holds) {
+      const tg = holdTarget(n, d);
+      if (!tg) { Div.sendHome(d); continue; }
+      if (U.dist2(tg[0], tg[1], d.tx, d.ty) > 2.25) { d.tx = tg[0]; d.ty = tg[1]; }
+      const o = S.owner[Math.round(d.ax) + Math.round(d.ay) * World.W];
+      d.front = o && o !== n.id ? o : 0;
+    }
+  };
+  Div.dispatch = function (n, type, wx, wy) {
+    const S = G.S;
+    const name = type === 'arm' ? 'armoured' : 'infantry';
+    if (nearOwn(n.id, Math.round(wx), Math.round(wy), 45) < 0) return { ok: false, reason: 'Point at your front line (your border or the enemy land right next to it)' };
+    const all = listOf(n).filter((d) => d.type === type);
+    if (!all.length) return { ok: false, reason: `You have no ${name} divisions yet. Use +1 DIVISION, or grow your land` };
+    let ax = wx, ay = wy;
+    const here = Div.holdGroup(n, wx, wy);
+    if (here.length) { ax = here[0].ax; ay = here[0].ay; }
+    if (here.length >= D.stackMax) return { ok: false, reason: `A full stack (${D.stackMax}) already holds this spot` };
+    const pool = all.filter((d) => !here.includes(d));
+    if (!pool.length) return { ok: false, reason: `Every ${name} division is already on this spot` };
+    const rank = (d) => (d.mode === 'garrison' ? 0 : d.mode === 'hold' ? 2 : 1);
+    pool.sort((a, b) => rank(a) - rank(b) || U.dist2(a.x, a.y, ax, ay) - U.dist2(b.x, b.y, ax, ay));
+    const d = pool[0];
+    d.mode = 'hold'; d.ax = ax; d.ay = ay; d.holdAt = S.t; d.sel = false; d.vis = S.t + D.visibleFor; d.slot = here.length;
+    const tg = holdTarget(n, d);
+    if (tg) { d.tx = tg[0]; d.ty = tg[1]; }
+    Div.updateHolds(n); Div.computeStacks(n);
+    return { ok: true, div: d, stack: here.length + 1 };
+  };
+  Div.sendHome = function (d) {
+    const n = G.S.nations[d.owner];
+    d.mode = 'garrison'; d.front = 0; d.sel = false; d.ax = d.ay = undefined;
+    if (n) { Div.assign(n); Div.computeStacks(n); }
+  };
+  // greedy, stable matching of divisions to target points: a division keeps its spot when one is still close
+  function assignPoints(n, group, targets, apply) {
+    const left = targets.slice(), rest = [];
+    const W = World.W, S = G.S;
+    for (const d of group) {
+      let bi = -1, bd = 64;
+      for (let i = 0; i < left.length; i++) { const q = left[i], dd = U.dist2(d.tx, d.ty, q[0], q[1]); if (dd < bd) { bd = dd; bi = i; } }
+      if (bi >= 0 && S.owner[Math.round(d.tx - 0.5) + Math.round(d.ty - 0.5) * W] === n.id) { left.splice(bi, 1); apply(d, null); } else rest.push(d);
+    }
+    for (const d of rest) {
+      let bi = -1, bd = 1e18;
+      for (let i = 0; i < left.length; i++) { const q = left[i], dd = U.dist2(d.x, d.y, q[0], q[1]); if (dd < bd) { bd = dd; bi = i; } }
+      apply(d, bi >= 0 ? left.splice(bi, 1)[0] : targets[0]);
+    }
+  }
 
   // ---------------- automatic deployment ----------------
   Div.assign = function (n) {
@@ -151,7 +253,7 @@
     const incoming = S.attacks.filter((a) => !a.done && a.to === n.id && a.front.length);
     const outgoing = S.attacks.filter((a) => !a.done && a.from === n.id && a.to && a.front.length);
     const plan = n.divPlan;
-    const free = divs.filter((d) => d.mode !== 'plan');
+    const free = divs.filter((d) => d.mode !== 'plan' && d.mode !== 'hold');
     // planned divisions fight on their own front; they only follow attacks against that enemy
     if (plan) {
       for (const d of divs) if (d.mode === 'plan') {
@@ -181,11 +283,13 @@
         const group = groups[i];
         if (!group.length) return;
         const pts = samplePoints(a, group.length, a.fx);
-        group.forEach((d, j) => {
-          const p = pts[j % pts.length];
-          const [x, y] = insidePoint(n, p[0], p[1], 2.5 + Math.floor(j / pts.length) * 4);
-          if (d.mode !== 'defend' || d.front !== a.from) { d.x = x; d.y = y; } // spawn straight onto the line
-          d.tx = x; d.ty = y; d.mode = 'defend'; d.front = a.from; d.vis = S.t + D.visibleFor;
+        const targets = group.map((d, j) => { const p = pts[j % pts.length]; return insidePoint(n, p[0], p[1], 2.5 + Math.floor(j / pts.length) * 4); });
+        assignPoints(n, group, targets, (d, q) => {
+          if (q) {
+            if (d.mode !== 'defend' || d.front !== a.from) { d.x = q[0]; d.y = q[1]; d.deployT = S.t; } // spawn straight onto the line
+            d.tx = q[0]; d.ty = q[1];
+          }
+          d.mode = 'defend'; d.front = a.from; d.vis = S.t + D.visibleFor;
         });
       });
       return;
@@ -198,10 +302,10 @@
         const group = sorted.slice(i * per, (i + 1) * per);
         if (!group.length) return;
         const pts = samplePoints(a, Math.max(1, Math.ceil(group.length / 2)), true);
-        group.forEach((d, j) => {
-          const p = pts[j % pts.length];
-          const [x, y] = insidePoint(n, p[0], p[1], 1.5 + Math.floor(j / pts.length) * 4);
-          d.tx = x; d.ty = y; d.mode = 'attack'; d.front = a.to; d.vis = S.t + D.visibleFor;
+        const targets = group.map((d, j) => { const p = pts[j % pts.length]; return insidePoint(n, p[0], p[1], 1.5 + Math.floor(j / pts.length) * 4); });
+        assignPoints(n, group, targets, (d, q) => {
+          if (q) { d.tx = q[0]; d.ty = q[1]; }
+          d.mode = 'attack'; d.front = a.to; d.vis = S.t + D.visibleFor;
         });
       });
       return;
@@ -241,6 +345,7 @@
     for (const d of divs) d.stack = 0;
     for (const d of divs) {
       if (d.mode === 'garrison') continue;
+      if (d.mode === 'hold') { d.stack = Math.min(D.stackMax - 1, Div.holdGroup(n, d.ax, d.ay).length - 1); continue; } // a sent stack is one formation
       let depth = 0;
       for (const e of divs) {
         if (e === d || e.mode === 'garrison') continue;
@@ -255,7 +360,7 @@
   Div.tileMods = function (at, x, y) {
     const S = G.S;
     const a = S.nations[at.from], d = at.to ? S.nations[at.to] : null;
-    let pa = 0, pd = 0, armA = 0, stackA = 0, stackD = 0, nearD = false;
+    let pa = 0, pd = 0, armA = 0, stackA = 0, stackD = 0, nearD = false, infA = 0, armD = 0, infD = 0;
     if (a && a.divs) for (const v of a.divs) {
       if (v.mode === 'garrison') continue;
       const r = Div.radius(v);
@@ -263,7 +368,7 @@
       let p = Div.power(v);
       if (d && G.has(d, 'counterBattery')) p *= 0.85;
       pa += p;
-      if (v.type === 'arm') armA++;
+      if (v.type === 'arm') armA++; else infA++;
       stackA = Math.max(stackA, v.stack);
     }
     if (d && d.divs) for (const v of d.divs) {
@@ -273,9 +378,12 @@
       let p = Div.power(v);
       if (G.has(a, 'counterBattery')) p *= 0.85;
       pd += p; nearD = true;
+      if (v.type === 'arm') armD++; else infD++;
       stackD = Math.max(stackD, v.stack);
     }
     let cost = (1 + pd / 12000) / (1 + pa / 10000);
+    if (armA && infA) cost /= G.mod(a, 'mixedStack');   // Combined Stacks
+    if (armD && infD) cost *= G.mod(d, 'mixedStack');
     let speed = 1;
     if (armA) {
       speed *= Math.pow(1.3 * G.mod(a, 'armorSpeed'), Math.min(3, armA));        // +30% per armoured division (stacks)
@@ -390,7 +498,7 @@
   Div.visibleTo = function (d, p) {
     const S = G.S;
     if (!p || S.opts.mode === 'watch') return d.vis > S.t && d.mode !== 'garrison';
-    if (d.owner === p.id) return !!p.divPlan || (d.vis > S.t && d.mode !== 'garrison');
+    if (d.owner === p.id) return !!p.divPlan || d.mode === 'hold' || (d.vis > S.t && d.mode !== 'garrison');
     if (d.mode === 'garrison') return false;
     if (d.vis > S.t && (d.front === p.id || G.isAllied(d.front, p.id))) return true;  // fighting us or our allies
     if (d.mode === 'plan' && d.front === p.id) return true;                             // massing on our border

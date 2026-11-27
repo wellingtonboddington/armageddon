@@ -24,6 +24,7 @@
         g *= G.mod(n, 'growth') * (n.supplyGrowth == null ? 1 : n.supplyGrowth) * (1 - 0.5 * (n.falloutFrac || 0));
         if (n.ai) g *= MP.CONFIG.DIFFICULTY[n.difficulty].eff;
         // the Void Armada is fed from orbit: it can be bled, but never into a death spiral
+        if (n.morale != null && n.morale < 1) g *= 0.4 + 0.6 * n.morale;  // a shaken nation recruits slowly
         if (n.isAlien) g = Math.max(g, n.cap * 0.002 * (1 - n.troops / n.cap));
         n.troops = Math.min(n.cap, n.troops + g * dt);
       } else {
@@ -146,7 +147,7 @@
       if (n.isPlayer && !quiet) { MP.SFX.play('error'); MP.Game.toast(chk.reason, 'bad'); if (chk.needDeposit) MP.Game.notify('build.need_deposit', {}); else MP.Game.notify('build.bad_spot', { reason: chk.reason }); }
       return null;
     }
-    const cost = G.structCost(n, type);
+    const cost = G.structCost(n, type, !!chk.upgrade);
     if (n.credits < cost.credits || n.uranium < cost.u) {
       if (n.isPlayer && !quiet) { MP.SFX.play('error'); MP.Game.toast('Not enough ' + (n.credits < cost.credits ? 'credits' : 'uranium'), 'bad'); MP.Game.notify('build.cant_afford', { type: C.BUILD[type].name }); }
       return null;
@@ -156,6 +157,7 @@
     const b = C.BUILD[type];
     let time = b.time * G.mod(n, 'buildSpeed');
     if (type === 'silo') time *= G.mod(n, 'siloBuild');
+    if (type === 'fort') time *= G.mod(n, 'fortBuild');
     if (type === 'warship') {
       n.levels.warship = (n.levels.warship || 0) + 1;
       const ship = MP.Naval.spawnWarship(n, chk.port, chk.patrol, time * G.mod(n, 'shipBuild'));

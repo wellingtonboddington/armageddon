@@ -67,6 +67,9 @@ MIDNIGHT PROTOCOL is an original game. Its genre (real-time territory grand stra
 | Council | session every 4:00, 20 s vote; mandates last 2:00 |
 | Divisions | count `2 + √tiles/10` (max 24, +skills/raised); 34 % armour; infantry ~1.5k + 2 % of troop cap, armour ¼ of that but ×10 punch; artillery +35 %, drones +25 %; trained ×2; supply 70 tiles from factories, 300 from hubs, 40 from the capital; unsupplied ×0.6 |
 | Division effects | tile cost ×(1+def/12k)/(1+atk/10k), clamped 0.4–3.2; armour speed ×1.3 per division, ×1.2 more in a breakthrough; stacks up to 3: lead digs in 33 % faster, +10 % speed, attackers pay +25 %, ground lost 25 % slower; prepared front +15 % |
+| Capital strike | missile (not Orbital/Airstrike/EMP) on a capital: 50 % instant surrender to the attacker (land, buildings, ½ treasury, ¼ army); else ruins, rebuild within 180 s (cost 8k + 200·√tiles, 20 s) or surrender; morale −0.35 (recovers 0.004/s once rebuilt): growth ×(0.4+0.6m), own attacks ×(1+0.6(1−m)), attackers ×(0.6+0.4m) — designer |
+| Forts by doctrine | normal ×5 / ×3, range 50·2^(L−1) · Fortress ×min(15, 5L) / ×min(15, 3L), range 50, half price, upgrades at first-fort price · Trench ×min(7, 5L) / ×min(7, 3L), range ≤ 100, half price — designer |
+| Scorched Earth | lost fort → inverse fort (×0.25 cost, ×3 speed inside its range); encircled pockets never annexed, ×5 cost; after capital loss all its land ×5 — designer |
 | Win | 80 % of the world's land, last nation/team standing, every survivor allied with you, or the largest nation when time runs out |
 
 ## Architecture

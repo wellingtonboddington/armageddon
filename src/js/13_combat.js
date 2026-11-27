@@ -157,22 +157,37 @@
     for (const t of a.border) for (const u of neighbors(t)) War.pushFront(at, u);
   };
 
-  // number of fort layers protecting (x,y) for defender defId against attacker atkId (0 = none)
-  function fortFactor(defId, x, y, atkId) {
-    if (!defId) return 0;
+  // number of fort layers protecting (x,y) for defender defId against attacker atkId (0 = none);
+  // fortInfo also returns the strongest cost / slow multipliers (they depend on doctrine and fort level)
+  const FI = { n: 0, cm: 1, sm: 1 };
+  function fortInfo(defId, x, y, atkId) {
+    FI.n = 0; FI.cm = 1; FI.sm = 1;
+    if (!defId) return FI;
     const S = G.S, d = S.nations[defId];
     const homeReclaim = atkId && G.has(S.nations[atkId], 'homeland') && S.home[x + y * World.W] === atkId;
-    let n = 0;
-    const rm = G.mod(d, 'fortRadius');
     for (const f of d.st.fort) {
       if (!G.isActive(f)) continue;
       if (homeReclaim && f.builtBy === atkId) continue; // Homeland walks straight through forts it built itself
-      const r = C.FORT_RADIUS * Math.pow(2, f.level - 1) * rm;
-      if (U.dist2(f.x, f.y, x, y) <= r * r) { n++; if (n >= 2) break; }
+      const r = G.fortRange(d, f.level);
+      if (U.dist2(f.x, f.y, x, y) <= r * r) {
+        FI.n++;
+        const m = G.fortMults(d, f.level);
+        if (m[0] > FI.cm) FI.cm = m[0]; if (m[1] > FI.sm) FI.sm = m[1];
+        if (FI.n >= 2 && FI.cm >= 15) break;
+      }
     }
-    if (S.tempForts) for (const tf of S.tempForts) if (tf.owner === defId && tf.until > S.t && U.dist2(tf.x, tf.y, x, y) <= tf.r * tf.r) n++;
-    return Math.min(2, n);
+    if (S.tempForts) for (const tf of S.tempForts) if (tf.owner === defId && tf.until > S.t && U.dist2(tf.x, tf.y, x, y) <= tf.r * tf.r) { FI.n++; if (C.FORT_COST_MULT > FI.cm) FI.cm = C.FORT_COST_MULT; if (C.FORT_SLOW > FI.sm) FI.sm = C.FORT_SLOW; }
+    FI.n = Math.min(2, FI.n);
+    return FI;
   }
+  function fortFactor(defId, x, y, atkId) { return fortInfo(defId, x, y, atkId).n; }
+  // a lost Scorched Earth fort: its old owner retakes that ground paying 75% less and moving 3× faster
+  function inInverseFort(id, x, y) {
+    const S = G.S;
+    for (const z of S.inverseForts.values()) if (z.owner === id && U.dist2(z.x, z.y, x, y) <= z.r * z.r && S.owner[z.tile] !== id) return true;
+    return false;
+  }
+  War.inInverseFort = inInverseFort;
   War.fortFactor = fortFactor;
 
   War.supplyDist = function (n, x, y) {
@@ -192,14 +207,19 @@
       if (!G.isSoft(t) && !MP.Weapons.inFallout(x, y)) cost *= C.DUG_IN_MULT;
       cost += (d.troops / Math.max(1, d.tiles)) * C.DENSITY_COST;
       cost *= G.mod(d, 'defendCost');
-      const ff = fortFactor(at.to, x, y, at.from);
-      if (ff) { cost *= C.FORT_COST_MULT * (ff > 1 ? 1.5 : 1); slow *= C.FORT_SLOW * (ff > 1 ? 1.3 : 1); }
+      const fi = fortInfo(at.to, x, y, at.from);
+      if (fi.n) { const sp = G.mod(a, 'sappers'); cost *= fi.cm * sp * (fi.n > 1 ? 1.5 : 1); slow *= fi.sm * sp * (fi.n > 1 ? 1.3 : 1); }
+      // Scorched Earth holdouts: encircled pockets, and everything left once the capital has fallen, cost ×5 to crush
+      if (G.has(d, 'scorched') && (d.capitalFallen || (S.encircled && S.encircled[t] === d.id))) cost *= 5;
+      if (S.encircled && S.encircled[t] === d.id && G.has(d, 'lastStand')) cost *= G.mod(d, 'lastStand'); // Last Stand
       // capital garrison: the ground around a capital is the hardest in the nation
-      if (d.capital >= 0) { const gr = C.CAPITAL_GUARD_R + Math.sqrt(d.tiles) / 15, gx = x - d.capX, gy = y - d.capY; if (gx * gx + gy * gy <= gr * gr) { cost *= C.CAPITAL_GUARD_COST; slow *= C.CAPITAL_GUARD_SLOW; } }
+      if (d.capital >= 0 && !d.capRuin) { const gr = C.CAPITAL_GUARD_R + Math.sqrt(d.tiles) / 15, gx = x - d.capX, gy = y - d.capY; if (gx * gx + gy * gy <= gr * gr) { cost *= C.CAPITAL_GUARD_COST; slow *= C.CAPITAL_GUARD_SLOW; } }
       // Homeland reclaiming its own soil: 25% cheaper, 3× faster
       if (G.has(a, 'homeland') && S.home[t] === at.from) { cost *= 0.75; slow /= 3; }
-      // Scorched Earth retaking burnt land it once held: half price
-      if (G.has(a, 'scorched') && S.prevOwner[t] === at.from && G.isSoft(t)) cost *= 0.5;
+      // Scorched Earth: inside one of its lost forts' range it pays 75% less and moves 3× faster;
+      // elsewhere, retaking burnt land it once held costs half
+      if (G.has(a, 'scorched') && S.inverseForts.size && inInverseFort(at.from, x, y)) { cost *= 0.25; slow /= 3; }
+      else if (G.has(a, 'scorched') && S.prevOwner[t] === at.from && G.isSoft(t)) cost *= 0.5;
       // Blitzkrieg without numbers bleeds
       if (G.has(a, 'blitzkrieg') && at.troops < at.def + (d.troops / Math.max(1, d.tiles)) * Math.min(at.front.length, 400) * 0.5) cost *= 1.5;
     }
@@ -211,6 +231,9 @@
       slow *= 1 - 0.35 * at.press * near;
     }
     cost *= G.mod(a, 'attackCost');
+    // morale: a shaken attacker pays more, a shaken defender gives way
+    if (a.morale != null && a.morale < 1) cost *= 1 + 0.6 * (1 - a.morale);
+    if (at.to) { const d = S.nations[at.to]; if (d.morale != null && d.morale < 1) cost *= 0.6 + 0.4 * d.morale; }
     // supply lines
     const free = C.SUPPLY_FREE * G.mod(a, 'supply');
     const sd = War.supplyDist(a, x, y);
@@ -342,7 +365,7 @@
   War.pocketCursor = 1;
   War.tickPockets = function () {
     const S = G.S;
-    if (S.pockets) for (let i = S.pockets.length - 1; i >= 0; i--) if (S.t - S.pockets[i].seen > (S.pockets[i].breakout ? 80 : 16) || !S.nations[S.pockets[i].nation].alive) S.pockets.splice(i, 1);
+    if (S.pockets) for (let i = S.pockets.length - 1; i >= 0; i--) if (S.t - S.pockets[i].seen > (S.pockets[i].breakout ? 80 : S.pockets[i].holdout ? 45 : 16) || !S.nations[S.pockets[i].nation].alive) S.pockets.splice(i, 1);
     if (S.tempForts) for (let i = S.tempForts.length - 1; i >= 0; i--) if (S.tempForts[i].until <= S.t) S.tempForts.splice(i, 1);
     const nn = S.nations.length;
     // only nations that lost ground can have been cut off; skip the rest (a full sweep still happens slowly)
@@ -388,9 +411,28 @@
     let connected = 0;
     for (const c of comps) if (c.hasCap) connected += c.size;
     n.supplyGrowth = 0.5 + 0.5 * (connected / Math.max(1, n.tiles));
-    // annex enclosed pockets
+    // annex enclosed pockets (Scorched Earth pockets never give up: they hold out and cost ×5 to crush)
+    const holdout = G.has(n, 'scorched');
+    if (holdout || G.has(n, 'lastStand')) {
+      if (!S.encircled) S.encircled = new Uint8Array(World.N);
+      if (n._encl) for (const t of n._encl) if (S.encircled[t] === id) S.encircled[t] = 0;
+      n._encl = [];
+    }
     for (const c of comps) {
       if (c.hasCap || c.open || c.size > n.tiles * 0.3) continue;
+      if (n._encl && !holdout) for (const t of c.tiles) { S.encircled[t] = id; n._encl.push(t); } // Last Stand: the pocket is marked
+      if (holdout) {
+        for (const t of c.tiles) { S.encircled[t] = id; n._encl.push(t); }
+        if (c.size >= 25 || (n.isPlayer && c.size >= 8)) {
+          let cx = 0, cy = 0; for (const t of c.tiles) { cx += t % w; cy += (t / w) | 0; } cx /= c.size; cy /= c.size;
+          S.pockets = S.pockets || [];
+          let pk = S.pockets.find((q) => q.nation === id && U.dist2(q.x, q.y, cx, cy) < 900);
+          let by = 0, bc = 0; for (const [o, cnt] of c.nb) if (cnt > bc) { bc = cnt; by = o; }
+          if (!pk) { pk = { nation: id, by, x: cx, y: cy, troops: 0, size: c.size, seen: S.t, annexAt: Infinity, holdout: true }; S.pockets.push(pk); if (n.isPlayer) MP.Game.wire('IMINT', 'A POCKET IS CUT OFF — SCORCHED EARTH: IT HOLDS OUT AND COSTS THE ENEMY ×5', 'good'); }
+          pk.seen = S.t; pk.x = cx; pk.y = cy; pk.size = c.size; pk.troops = n.troops * c.size / Math.max(1, n.tiles); pk.by = by;
+        }
+        continue;
+      }
       let best = 0, bc = 0;
       for (const [o, cnt] of c.nb) if (cnt > bc && G.canAttack(o, id)) { bc = cnt; best = o; }
       if (!best) continue;
@@ -401,7 +443,7 @@
       const notable = c.size >= 25 || (n.isPlayer && c.size >= 8);
       if (!pk && notable) {
         const byN = S.nations[best];
-        const delay = 7 * (G.has(byN, 'blitzkrieg') ? 0.75 : 1) * (G.has(byN, 'pincer') ? 0.6 : 1);
+        const delay = 7 * (G.has(byN, 'blitzkrieg') ? 0.75 : 1) * (G.has(byN, 'pincer') ? 0.6 : 1) + (G.has(n, 'lastStand') ? 15 : 0);
         pk = { nation: id, by: best, x: cx, y: cy, troops: trapped, size: c.size, seen: S.t, annexAt: S.t + delay };
         S.pockets.push(pk);
         // Call for the Motherland: encircled troops on home soil dig in like a fort and break out toward the main force
