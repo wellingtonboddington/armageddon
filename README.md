@@ -22,7 +22,7 @@ An original, fully offline real-time grand strategy game in a single HTML file. 
   - Enrichment plants only work on free deposits. Without one, uranium caps at 200.
   - Placing a building on one of your own of the same type upgrades it.
 - **Land war:**
-  - Dug-in land costs ×2 troops to take; striped (fresh) land is soft.
+  - Dug-in land (plain, solid colour) costs ×2 troops to take; fresh land (wide diagonal bands) is soft.
   - Forts make attackers pay ×5 troops and advance ×3 slower. Their range doubles per level. Fortress forts keep a 50-tile range but every level adds ×5 cost and ×3 slow (up to ×15 / ×15); Trench forts reach 100 tiles at most and go up to ×7 / ×7.
   - Terrain affects the cost and speed of attacks.
   - Supply lines weaken attacks far from your cities and hubs. Cut-off pockets starve, and encircled ones are annexed.

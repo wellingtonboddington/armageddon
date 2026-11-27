@@ -444,7 +444,7 @@
     for (let y = 0; y < cv.height; y++) for (let x = 0; x < cv.width; x++) {
       let a = 0.4, col = tc.rgb;
       switch (lo.pattern) {
-        case 'hazard': break; // hazard tape on the border (drawn below)
+        case 'hazard': break; // a black outline (drawn below)
         case 'grid': a = (x % 6 === 0 || y % 6 === 0) ? 0.8 : 0.35; break;
         case 'dots': a = (x % 4 === 0 && y % 4 === 0) ? 0.9 : 0.35; break;
         case 'chevron': a = ((x + Math.abs((y % 8) - 4)) % 8) < 2 ? 0.8 : 0.35; break;
@@ -454,7 +454,7 @@
     }
     c.restore();
     c.strokeStyle = U.rgb(tc.rgb); c.lineWidth = 2; c.beginPath(); c.ellipse(cv.width / 2, cv.height / 2, cv.width * 0.42, cv.height * 0.38, 0.1, 0, 7); c.stroke();
-    if (lo.pattern === 'hazard') { c.strokeStyle = '#16140e'; c.lineWidth = 3; c.setLineDash([5, 5]); c.beginPath(); c.ellipse(cv.width / 2, cv.height / 2, cv.width * 0.42, cv.height * 0.38, 0.1, 0, 7); c.stroke(); c.setLineDash([]); }
+    if (lo.pattern === 'hazard') { c.strokeStyle = '#16140e'; c.lineWidth = 3; c.beginPath(); c.ellipse(cv.width / 2, cv.height / 2, cv.width * 0.42, cv.height * 0.38, 0.1, 0, 7); c.stroke(); }
   }
   Menu.drawLoadoutPreview = drawLoadoutPreview;
 
@@ -856,7 +856,7 @@
     modal(`<div class="mh"><span class="tag">BRIEFING</span><h2>HOW TO PLAY</h2></div><div class="howto">
       <h4>SPAWN & EXPAND</h4><p>Click open land to choose where your nation begins (${C.SPAWN_SECONDS}s). Then click unclaimed land to expand; the attack presets (10–75%) set how many troops go. Click a neighbour's land to attack it — where you click is where your forces concentrate. <b>Middle-click</b> (or Alt+click) any nation for orders (Info · Attack · Boat · Ally · Truce · Target · Embargo · Gift · Ask · Cede · Focus). Right-click cancels.</p>
       <h4>PRE-SET COUNTRIES & ALIEN INVASION</h4><p>Lead a real country on real borders: pick it in the setup or click it on the map during the first seconds. In ALIEN INVASION the Void Armada chooses its landfall while the world sets up and lands after the grace period (0:30 on pre-set countries, 5:00 with custom nations). It builds at hyper speed, earns five times as much and fires orbital strikes from the start. No one is allied except your party — and not every nation cares to fight it.</p>
-      <h4>LAND</h4><p>Old land is <b>dug in</b> — it costs ×${C.DUG_IN_MULT} the troops. Land with bold <b>white / hatching</b> was taken recently and is soft (hover it: the readout says SOFT or DUG IN). Trench Warfare land never shows it — it digs in at once. Fallout softens any line. Highlands and mountains cost more and slow the advance. Attacks far from your cities and logistics hubs suffer <b>supply</b> penalties; pockets cut off from your capital starve, and fully encircled pockets are annexed.</p>
+      <h4>LAND</h4><p>Old land is <b>dug in</b> — it costs ×${C.DUG_IN_MULT} the troops. Land with <b>wide diagonal bands</b> was taken recently and is fresh — soft (hover it: the readout says SOFT or DUG IN). Plain, solid land is dug in. Trench Warfare land never shows bands — it digs in at once. Fallout softens any line. Highlands and mountains cost more and slow the advance. Attacks far from your cities and logistics hubs suffer <b>supply</b> penalties; pockets cut off from your capital starve, and fully encircled pockets are annexed.</p>
       <h4>BUILDINGS (1–8)</h4><p><b>City</b> +25k troop cap per level · <b>Port</b> trade ships & warships · <b>Factory</b> sends convoys to cities, ports and factories within ${C.FACTORY_RANGE} tiles (each level doubles convoys and gold) · <b>Logistics Hub</b> links everything within ${C.HUB_RANGE} tiles with white roads, convoys 25% faster and reach 2 stops · <b>Enrichment</b> must sit on a free ☢ deposit — without one uranium caps at ${C.URANIUM_CAP_NO_DEPOSIT} · <b>Fort</b> attackers pay ×5 troops and move ×3 slower within ${C.FORT_RADIUS} tiles (range doubles per level; Fortress keeps 50 tiles but each level adds ×5 / ×3 up to ×15; Trench reaches 100 tiles and up to ×7) · <b>Warship</b> picks its own targets, captures enemy trade ships; click it then click the sea to set a patrol · <b>Silo</b> launches missiles. Place a building on one of yours of the same type to upgrade it — same price as a new one.</p>
       <h4>DEFCON & THE CLOCK</h4><p>The Doomsday Clock starts at 12:00 to midnight. It drifts forward, jumps with every fallen nation, betrayal and strike, and is pulled back by interceptions, lasers and Council treaties. At 0:00 the Nuclear Winter ends the match with no winner. DEFCON 4 arrives when the peace timer expires; DEFCON 3 when anyone holds 10% or the first bomb falls; DEFCON 2 at 25% or 5:00 on the clock; DEFCON 1 at 2:00.</p>
       <h4>ARSENAL</h4><p>Research each weapon once (Z Airstrike, N Tactical, H Hypersonic, I ICBM, M MIRV, O Orbital, E EMP), then press its key and click a target. Shift-click or toggle <b>LAUNCH ALL</b> to fire every ready silo. MIRVs split into 5 warheads mid-flight.</p>

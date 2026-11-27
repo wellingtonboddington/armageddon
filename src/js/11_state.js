@@ -184,7 +184,13 @@
     if (x < w - 1) refreshBorder(t + 1);
     if (t >= w) refreshBorder(t - w);
     if (t < World.N - w) refreshBorder(t + w);
-    MP.Render && MP.Render.dirty(t);
+    if (MP.Render) { // neighbours' border shading depends on this tile too
+      MP.Render.dirty(t);
+      if (x > 0) MP.Render.dirty(t - 1);
+      if (x < w - 1) MP.Render.dirty(t + 1);
+      if (t >= w) MP.Render.dirty(t - w);
+      if (t < World.N - w) MP.Render.dirty(t + w);
+    }
     const st = S.structAt.get(t);
     if (o && S.inverseForts.size) { const z = S.inverseForts.get(t); if (z && z.owner === o) S.inverseForts.delete(t); } // inverse fort retaken
     if (st) G.structCaptured(st, prev, o);

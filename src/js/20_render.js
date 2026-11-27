@@ -7,7 +7,6 @@
   const R = (MP.Render = {});
   let cv, ctx, DPR = 1, VW = 0, VH = 0;
   let terrainCv, terrCv, terrCtx, terrImg, terrData;
-  let softCv, softCtx, softImg, softData, stripeCv, stripeCtx, stripePat;
   let dirtyFlag, dirtyList = [], dirtyCount = 0;
   const cam = { x: 1000, y: 470, z: 1, tx: null, ty: null, tz: null };
   R.cam = cam;
@@ -27,37 +26,22 @@
     terrCtx = terrCv.getContext('2d');
     terrImg = terrCtx.createImageData(World.W, World.H);
     terrData = new Uint32Array(terrImg.data.buffer);
-    softCv = document.createElement('canvas'); softCv.width = World.W; softCv.height = World.H;
-    softCtx = softCv.getContext('2d');
-    softImg = softCtx.createImageData(World.W, World.H);
-    softData = new Uint32Array(softImg.data.buffer);
-    stripeCv = document.createElement('canvas'); stripeCtx = stripeCv.getContext('2d');
-    // fresh land: bold white "/" hatching with a dark companion line, readable on any territory colour
-    // (cosmetic territory patterns run the other way, so the two never look alike)
-    const pc = document.createElement('canvas'); pc.width = 12; pc.height = 12;
-    const pcx = pc.getContext('2d');
-    const diag = (c) => { pcx.moveTo(-4, c + 4); pcx.lineTo(c + 4, -4); };
-    pcx.strokeStyle = '#fff'; pcx.lineWidth = 2.6;
-    pcx.beginPath(); diag(0); diag(12); diag(24); pcx.stroke();
-    pcx.strokeStyle = 'rgba(0,0,0,0.85)'; pcx.lineWidth = 1.4;
-    pcx.beginPath(); diag(5); diag(17); pcx.stroke();
-    stripePat = stripeCtx.createPattern(pc, 'repeat');
     dirtyFlag = new Uint8Array(World.N);
     cam.z = R.minZoom() * 1.05;
   };
 
   // ---------------- adaptive quality (keeps every feature; trades resolution / refresh rates) ----------------
   const QUAL = {
-    high: { dpr: 2, stripeEvery: 0, skip: 0, labels: 6 },
-    balanced: { dpr: 1.5, stripeEvery: 0.18, skip: 0, labels: 4 },
-    low: { dpr: 1, stripeEvery: 0.45, skip: 1, labels: 3 },
+    high: { dpr: 2, skip: 0, labels: 6 },
+    balanced: { dpr: 1.5, skip: 0, labels: 4 },
+    low: { dpr: 1, skip: 1, labels: 3 },
   };
   const ORDER = ['high', 'balanced', 'low'];
   R.quality = 'high';
   let frameEma = 16, badFor = 0, goodFor = 0, skipFlip = 0;
   R.setQuality = function (q) {
     if (!QUAL[q] || q === R.quality) return;
-    R.quality = q; R.resize(); stripeAge = 99;
+    R.quality = q; R.resize();
   };
   R.applyGfxSetting = function () {
     const s = MP.settings.get('gfx', 'auto');
@@ -123,8 +107,6 @@
   R.resetMatch = function () {
     terrData.fill(0);
     terrCtx.putImageData(terrImg, 0, 0);
-    softData.fill(0);
-    softCtx.putImageData(softImg, 0, 0);
     dirtyFlag.fill(0); dirtyList = []; dirtyCount = 0;
     effects.length = 0;
     labelCursor = 1;
@@ -148,9 +130,20 @@
     }
     const n = S.nations[o];
     const c = n.color;
-    if (G.isBorderTile(t, o)) {
-      // HAZARD: the border is hazard tape (dark / bright segments); every other pattern: bright border
-      if (n.pattern === 'hazard' && (((x + y) >> 1) & 1)) return pack(22, 20, 14, 255);
+    const border = G.isBorderTile(t, o);
+    // fresh (soft) land: wide diagonal bands in a darker shade of the owner's colour, border tiles included.
+    // Dug-in land is plain — so diagonal bands on the map always mean fresh land.
+    if (soft) {
+      if (((x + y) >> 2) & 1) return pack(c[0] * 0.4 | 0, c[1] * 0.4 | 0, c[2] * 0.4 | 0, border ? 200 : 135);
+      return border ? pack(Math.min(255, c[0] + 55), Math.min(255, c[1] + 55), Math.min(255, c[2] + 55), 255) : pack(c[0], c[1], c[2], 105);
+    }
+    if (border) {
+      // HAZARD: a black outline where we meet another nation or the sea (not around unclaimed land); others: bright border
+      if (n.pattern === 'hazard') {
+        const N = World.N;
+        const nb = [x > 0 ? t - 1 : -1, x < W - 1 ? t + 1 : -1, t >= W ? t - W : -1, t < N - W ? t + W : -1];
+        for (const u of nb) if (u >= 0 && (!World.land[u] || (S.owner[u] && S.owner[u] !== o))) return pack(22, 20, 14, 255);
+      }
       return pack(Math.min(255, c[0] + 55), Math.min(255, c[1] + 55), Math.min(255, c[2] + 55), 255);
     }
     let a = 105;
@@ -177,7 +170,6 @@
       const t = list[i];
       dirtyFlag[t] = 0;
       terrData[t] = tileColor(t);
-      softData[t] = (G.S.owner[t] && G.S.softUntil[t] > G.S.t) ? 0xffffffff : 0;
       const x = t % W, y = (t / W) | 0;
       const k = ((y / CH) | 0) * 64 + ((x / CH) | 0);
       let r = chunks.get(k);
@@ -186,7 +178,6 @@
     }
     for (const r of chunks.values()) {
       terrCtx.putImageData(terrImg, 0, 0, r[0], r[1], r[2] - r[0] + 1, r[3] - r[1] + 1);
-      softCtx.putImageData(softImg, 0, 0, r[0], r[1], r[2] - r[0] + 1, r[3] - r[1] + 1);
     }
   }
   R.redrawAll = function () {
@@ -263,7 +254,6 @@
   }
 
   // ---------------- main draw ----------------
-  let stripeAge = 99, stripeCam = '';
   R.frame = function (dtReal) {
     timeNow += dtReal;
     const S = G.S;
@@ -292,25 +282,6 @@
       if (S) {
         if (R.prof) { const t0 = performance.now(); flushTerritory(); R.prof.flush = (R.prof.flush || 0) + performance.now() - t0; } else flushTerritory();
         ctx.drawImage(terrCv, sx0, sy0, sx1 - sx0, sy1 - sy0, dx, dy, dw, dh);
-        // fresh (soft) land: crisp screen-space hatching at every zoom level
-        const bw = cv.width, bh = cv.height;
-        const camKey = cam.x.toFixed(2) + '|' + cam.y.toFixed(2) + '|' + cam.z.toFixed(4) + '|' + bw + 'x' + bh;
-        stripeAge += dtReal;
-        if (camKey !== stripeCam || stripeAge >= Q.stripeEvery) {
-          stripeCam = camKey; stripeAge = 0;
-          if (stripeCv.width !== bw || stripeCv.height !== bh) { stripeCv.width = bw; stripeCv.height = bh; }
-          stripeCtx.setTransform(1, 0, 0, 1, 0, 0);
-          stripeCtx.globalCompositeOperation = 'source-over';
-          stripeCtx.clearRect(0, 0, bw, bh);
-          stripeCtx.imageSmoothingEnabled = false;
-          stripeCtx.drawImage(softCv, sx0, sy0, sx1 - sx0, sy1 - sy0, dx * DPR, dy * DPR, dw * DPR, dh * DPR);
-          stripeCtx.globalCompositeOperation = 'source-in';
-          stripeCtx.fillStyle = stripePat;
-          stripeCtx.fillRect(0, 0, bw, bh);
-        }
-        ctx.save(); ctx.setTransform(1, 0, 0, 1, shx * DPR, shy * DPR); ctx.globalAlpha = 0.4;
-        ctx.drawImage(stripeCv, 0, 0);
-        ctx.restore();
       }
     }
     // screen grid (tactical)

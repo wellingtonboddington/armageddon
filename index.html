@@ -4809,7 +4809,13 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     if (x < w - 1) refreshBorder(t + 1);
     if (t >= w) refreshBorder(t - w);
     if (t < World.N - w) refreshBorder(t + w);
-    MP.Render && MP.Render.dirty(t);
+    if (MP.Render) { // neighbours' border shading depends on this tile too
+      MP.Render.dirty(t);
+      if (x > 0) MP.Render.dirty(t - 1);
+      if (x < w - 1) MP.Render.dirty(t + 1);
+      if (t >= w) MP.Render.dirty(t - w);
+      if (t < World.N - w) MP.Render.dirty(t + w);
+    }
     const st = S.structAt.get(t);
     if (o && S.inverseForts.size) { const z = S.inverseForts.get(t); if (z && z.owner === o) S.inverseForts.delete(t); } // inverse fort retaken
     if (st) G.structCaptured(st, prev, o);
@@ -9227,7 +9233,6 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
   const R = (MP.Render = {});
   let cv, ctx, DPR = 1, VW = 0, VH = 0;
   let terrainCv, terrCv, terrCtx, terrImg, terrData;
-  let softCv, softCtx, softImg, softData, stripeCv, stripeCtx, stripePat;
   let dirtyFlag, dirtyList = [], dirtyCount = 0;
   const cam = { x: 1000, y: 470, z: 1, tx: null, ty: null, tz: null };
   R.cam = cam;
@@ -9247,37 +9252,22 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     terrCtx = terrCv.getContext('2d');
     terrImg = terrCtx.createImageData(World.W, World.H);
     terrData = new Uint32Array(terrImg.data.buffer);
-    softCv = document.createElement('canvas'); softCv.width = World.W; softCv.height = World.H;
-    softCtx = softCv.getContext('2d');
-    softImg = softCtx.createImageData(World.W, World.H);
-    softData = new Uint32Array(softImg.data.buffer);
-    stripeCv = document.createElement('canvas'); stripeCtx = stripeCv.getContext('2d');
-    // fresh land: bold white "/" hatching with a dark companion line, readable on any territory colour
-    // (cosmetic territory patterns run the other way, so the two never look alike)
-    const pc = document.createElement('canvas'); pc.width = 12; pc.height = 12;
-    const pcx = pc.getContext('2d');
-    const diag = (c) => { pcx.moveTo(-4, c + 4); pcx.lineTo(c + 4, -4); };
-    pcx.strokeStyle = '#fff'; pcx.lineWidth = 2.6;
-    pcx.beginPath(); diag(0); diag(12); diag(24); pcx.stroke();
-    pcx.strokeStyle = 'rgba(0,0,0,0.85)'; pcx.lineWidth = 1.4;
-    pcx.beginPath(); diag(5); diag(17); pcx.stroke();
-    stripePat = stripeCtx.createPattern(pc, 'repeat');
     dirtyFlag = new Uint8Array(World.N);
     cam.z = R.minZoom() * 1.05;
   };
 
   // ---------------- adaptive quality (keeps every feature; trades resolution / refresh rates) ----------------
   const QUAL = {
-    high: { dpr: 2, stripeEvery: 0, skip: 0, labels: 6 },
-    balanced: { dpr: 1.5, stripeEvery: 0.18, skip: 0, labels: 4 },
-    low: { dpr: 1, stripeEvery: 0.45, skip: 1, labels: 3 },
+    high: { dpr: 2, skip: 0, labels: 6 },
+    balanced: { dpr: 1.5, skip: 0, labels: 4 },
+    low: { dpr: 1, skip: 1, labels: 3 },
   };
   const ORDER = ['high', 'balanced', 'low'];
   R.quality = 'high';
   let frameEma = 16, badFor = 0, goodFor = 0, skipFlip = 0;
   R.setQuality = function (q) {
     if (!QUAL[q] || q === R.quality) return;
-    R.quality = q; R.resize(); stripeAge = 99;
+    R.quality = q; R.resize();
   };
   R.applyGfxSetting = function () {
     const s = MP.settings.get('gfx', 'auto');
@@ -9343,8 +9333,6 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
   R.resetMatch = function () {
     terrData.fill(0);
     terrCtx.putImageData(terrImg, 0, 0);
-    softData.fill(0);
-    softCtx.putImageData(softImg, 0, 0);
     dirtyFlag.fill(0); dirtyList = []; dirtyCount = 0;
     effects.length = 0;
     labelCursor = 1;
@@ -9368,9 +9356,20 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     }
     const n = S.nations[o];
     const c = n.color;
-    if (G.isBorderTile(t, o)) {
-      // HAZARD: the border is hazard tape (dark / bright segments); every other pattern: bright border
-      if (n.pattern === 'hazard' && (((x + y) >> 1) & 1)) return pack(22, 20, 14, 255);
+    const border = G.isBorderTile(t, o);
+    // fresh (soft) land: wide diagonal bands in a darker shade of the owner's colour, border tiles included.
+    // Dug-in land is plain — so diagonal bands on the map always mean fresh land.
+    if (soft) {
+      if (((x + y) >> 2) & 1) return pack(c[0] * 0.4 | 0, c[1] * 0.4 | 0, c[2] * 0.4 | 0, border ? 200 : 135);
+      return border ? pack(Math.min(255, c[0] + 55), Math.min(255, c[1] + 55), Math.min(255, c[2] + 55), 255) : pack(c[0], c[1], c[2], 105);
+    }
+    if (border) {
+      // HAZARD: a black outline where we meet another nation or the sea (not around unclaimed land); others: bright border
+      if (n.pattern === 'hazard') {
+        const N = World.N;
+        const nb = [x > 0 ? t - 1 : -1, x < W - 1 ? t + 1 : -1, t >= W ? t - W : -1, t < N - W ? t + W : -1];
+        for (const u of nb) if (u >= 0 && (!World.land[u] || (S.owner[u] && S.owner[u] !== o))) return pack(22, 20, 14, 255);
+      }
       return pack(Math.min(255, c[0] + 55), Math.min(255, c[1] + 55), Math.min(255, c[2] + 55), 255);
     }
     let a = 105;
@@ -9397,7 +9396,6 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
       const t = list[i];
       dirtyFlag[t] = 0;
       terrData[t] = tileColor(t);
-      softData[t] = (G.S.owner[t] && G.S.softUntil[t] > G.S.t) ? 0xffffffff : 0;
       const x = t % W, y = (t / W) | 0;
       const k = ((y / CH) | 0) * 64 + ((x / CH) | 0);
       let r = chunks.get(k);
@@ -9406,7 +9404,6 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     }
     for (const r of chunks.values()) {
       terrCtx.putImageData(terrImg, 0, 0, r[0], r[1], r[2] - r[0] + 1, r[3] - r[1] + 1);
-      softCtx.putImageData(softImg, 0, 0, r[0], r[1], r[2] - r[0] + 1, r[3] - r[1] + 1);
     }
   }
   R.redrawAll = function () {
@@ -9483,7 +9480,6 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
   }
 
   // ---------------- main draw ----------------
-  let stripeAge = 99, stripeCam = '';
   R.frame = function (dtReal) {
     timeNow += dtReal;
     const S = G.S;
@@ -9512,25 +9508,6 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
       if (S) {
         if (R.prof) { const t0 = performance.now(); flushTerritory(); R.prof.flush = (R.prof.flush || 0) + performance.now() - t0; } else flushTerritory();
         ctx.drawImage(terrCv, sx0, sy0, sx1 - sx0, sy1 - sy0, dx, dy, dw, dh);
-        // fresh (soft) land: crisp screen-space hatching at every zoom level
-        const bw = cv.width, bh = cv.height;
-        const camKey = cam.x.toFixed(2) + '|' + cam.y.toFixed(2) + '|' + cam.z.toFixed(4) + '|' + bw + 'x' + bh;
-        stripeAge += dtReal;
-        if (camKey !== stripeCam || stripeAge >= Q.stripeEvery) {
-          stripeCam = camKey; stripeAge = 0;
-          if (stripeCv.width !== bw || stripeCv.height !== bh) { stripeCv.width = bw; stripeCv.height = bh; }
-          stripeCtx.setTransform(1, 0, 0, 1, 0, 0);
-          stripeCtx.globalCompositeOperation = 'source-over';
-          stripeCtx.clearRect(0, 0, bw, bh);
-          stripeCtx.imageSmoothingEnabled = false;
-          stripeCtx.drawImage(softCv, sx0, sy0, sx1 - sx0, sy1 - sy0, dx * DPR, dy * DPR, dw * DPR, dh * DPR);
-          stripeCtx.globalCompositeOperation = 'source-in';
-          stripeCtx.fillStyle = stripePat;
-          stripeCtx.fillRect(0, 0, bw, bh);
-        }
-        ctx.save(); ctx.setTransform(1, 0, 0, 1, shx * DPR, shy * DPR); ctx.globalAlpha = 0.4;
-        ctx.drawImage(stripeCv, 0, 0);
-        ctx.restore();
       }
     }
     // screen grid (tactical)
@@ -12115,7 +12092,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     for (let y = 0; y < cv.height; y++) for (let x = 0; x < cv.width; x++) {
       let a = 0.4, col = tc.rgb;
       switch (lo.pattern) {
-        case 'hazard': break; // hazard tape on the border (drawn below)
+        case 'hazard': break; // a black outline (drawn below)
         case 'grid': a = (x % 6 === 0 || y % 6 === 0) ? 0.8 : 0.35; break;
         case 'dots': a = (x % 4 === 0 && y % 4 === 0) ? 0.9 : 0.35; break;
         case 'chevron': a = ((x + Math.abs((y % 8) - 4)) % 8) < 2 ? 0.8 : 0.35; break;
@@ -12125,7 +12102,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     }
     c.restore();
     c.strokeStyle = U.rgb(tc.rgb); c.lineWidth = 2; c.beginPath(); c.ellipse(cv.width / 2, cv.height / 2, cv.width * 0.42, cv.height * 0.38, 0.1, 0, 7); c.stroke();
-    if (lo.pattern === 'hazard') { c.strokeStyle = '#16140e'; c.lineWidth = 3; c.setLineDash([5, 5]); c.beginPath(); c.ellipse(cv.width / 2, cv.height / 2, cv.width * 0.42, cv.height * 0.38, 0.1, 0, 7); c.stroke(); c.setLineDash([]); }
+    if (lo.pattern === 'hazard') { c.strokeStyle = '#16140e'; c.lineWidth = 3; c.beginPath(); c.ellipse(cv.width / 2, cv.height / 2, cv.width * 0.42, cv.height * 0.38, 0.1, 0, 7); c.stroke(); }
   }
   Menu.drawLoadoutPreview = drawLoadoutPreview;
 
@@ -12527,7 +12504,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     modal(`<div class="mh"><span class="tag">BRIEFING</span><h2>HOW TO PLAY</h2></div><div class="howto">
       <h4>SPAWN & EXPAND</h4><p>Click open land to choose where your nation begins (${C.SPAWN_SECONDS}s). Then click unclaimed land to expand; the attack presets (10–75%) set how many troops go. Click a neighbour's land to attack it — where you click is where your forces concentrate. <b>Middle-click</b> (or Alt+click) any nation for orders (Info · Attack · Boat · Ally · Truce · Target · Embargo · Gift · Ask · Cede · Focus). Right-click cancels.</p>
       <h4>PRE-SET COUNTRIES & ALIEN INVASION</h4><p>Lead a real country on real borders: pick it in the setup or click it on the map during the first seconds. In ALIEN INVASION the Void Armada chooses its landfall while the world sets up and lands after the grace period (0:30 on pre-set countries, 5:00 with custom nations). It builds at hyper speed, earns five times as much and fires orbital strikes from the start. No one is allied except your party — and not every nation cares to fight it.</p>
-      <h4>LAND</h4><p>Old land is <b>dug in</b> — it costs ×${C.DUG_IN_MULT} the troops. Land with bold <b>white / hatching</b> was taken recently and is soft (hover it: the readout says SOFT or DUG IN). Trench Warfare land never shows it — it digs in at once. Fallout softens any line. Highlands and mountains cost more and slow the advance. Attacks far from your cities and logistics hubs suffer <b>supply</b> penalties; pockets cut off from your capital starve, and fully encircled pockets are annexed.</p>
+      <h4>LAND</h4><p>Old land is <b>dug in</b> — it costs ×${C.DUG_IN_MULT} the troops. Land with <b>wide diagonal bands</b> was taken recently and is fresh — soft (hover it: the readout says SOFT or DUG IN). Plain, solid land is dug in. Trench Warfare land never shows bands — it digs in at once. Fallout softens any line. Highlands and mountains cost more and slow the advance. Attacks far from your cities and logistics hubs suffer <b>supply</b> penalties; pockets cut off from your capital starve, and fully encircled pockets are annexed.</p>
       <h4>BUILDINGS (1–8)</h4><p><b>City</b> +25k troop cap per level · <b>Port</b> trade ships & warships · <b>Factory</b> sends convoys to cities, ports and factories within ${C.FACTORY_RANGE} tiles (each level doubles convoys and gold) · <b>Logistics Hub</b> links everything within ${C.HUB_RANGE} tiles with white roads, convoys 25% faster and reach 2 stops · <b>Enrichment</b> must sit on a free ☢ deposit — without one uranium caps at ${C.URANIUM_CAP_NO_DEPOSIT} · <b>Fort</b> attackers pay ×5 troops and move ×3 slower within ${C.FORT_RADIUS} tiles (range doubles per level; Fortress keeps 50 tiles but each level adds ×5 / ×3 up to ×15; Trench reaches 100 tiles and up to ×7) · <b>Warship</b> picks its own targets, captures enemy trade ships; click it then click the sea to set a patrol · <b>Silo</b> launches missiles. Place a building on one of yours of the same type to upgrade it — same price as a new one.</p>
       <h4>DEFCON & THE CLOCK</h4><p>The Doomsday Clock starts at 12:00 to midnight. It drifts forward, jumps with every fallen nation, betrayal and strike, and is pulled back by interceptions, lasers and Council treaties. At 0:00 the Nuclear Winter ends the match with no winner. DEFCON 4 arrives when the peace timer expires; DEFCON 3 when anyone holds 10% or the first bomb falls; DEFCON 2 at 25% or 5:00 on the clock; DEFCON 1 at 2:00.</p>
       <h4>ARSENAL</h4><p>Research each weapon once (Z Airstrike, N Tactical, H Hypersonic, I ICBM, M MIRV, O Orbital, E EMP), then press its key and click a target. Shift-click or toggle <b>LAUNCH ALL</b> to fire every ready silo. MIRVs split into 5 warheads mid-flight.</p>
