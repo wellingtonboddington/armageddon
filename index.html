@@ -11948,6 +11948,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
       const body = box.querySelector('#ne-body');
       const renderBody = () => {
         if (st.tab === 'country') {
+          body.onclick = null; // the BUILD tab's handler must not run here (it would rebuild the custom flag over the country pick)
           body.innerHTML = `<input class="search" id="ne-search" placeholder="SEARCH" value="${U.esc(st.search)}"><div class="flag-grid" id="ne-grid"></div>`;
           const grid = body.querySelector('#ne-grid');
           const fill = () => {
@@ -11973,6 +11974,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
             <div class="fb-sec"><span>EMBLEM COLOUR</span><div class="sw">${MP.Flags.PALETTE.map((c) => `<button class="swc ${st.b.emblemColor === c ? 'on' : ''}" data-ec="${c}" style="background:#${c}" data-silent="1"></button>`).join('')}</div></div>`;
           body.onclick = (e) => {
             const b = e.target.closest('button'); if (!b) return;
+            if (!b.dataset.lay && !b.dataset.ci && !b.dataset.em && !b.dataset.ec) return;
             if (b.dataset.lay) st.b.layout = b.dataset.lay;
             if (b.dataset.ci) st.b.colors[Number(b.dataset.ci)] = b.dataset.c;
             if (b.dataset.em) st.b.emblem = b.dataset.em;
