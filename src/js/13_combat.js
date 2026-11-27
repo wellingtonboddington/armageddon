@@ -88,8 +88,10 @@
       if (troops < 1) return opp;
     }
     const fx = opts && opts.fx != null ? opts.fx : null, fy = opts && opts.fy != null ? opts.fy : null;
+    const userFocus = fx != null && !(opts && opts.plan);
     if (at && !(opts && opts.seed != null)) {
       at.troops += troops; at.initial += troops;
+      if (userFocus) { at.userFx = fx; at.userFy = fy; at.userT = S.t; }
       if (fx != null) {
         // re-clicking near the same mark concentrates harder; a new mark shifts the weight of the assault
         const near = at.fx != null && U.dist2(at.fx, at.fy, fx, fy) < 900;
@@ -101,6 +103,7 @@
     at = { id: S.nextAttackId++, from, to, troops, initial: troops, front: [], inFront: new Set(), budget: 0, done: false,
       boat: !!(opts && opts.boat), started: S.t, captured: 0, idle: 0, def: 0, defPeak: 0, defNext: S.t + 1.5 + S.rng() * 2.5,
       fx, fy, press: fx != null ? 0.5 : 0 };
+    if (userFocus) { at.userFx = fx; at.userFy = fy; at.userT = S.t; }
     S.attacks.push(at);
     if (opts && opts.seed != null) War.seedFrom(at, opts.seed); else War.refreshFrontier(at);
     if (to) War.declareWar(from, to);
@@ -223,9 +226,10 @@
       // Blitzkrieg without numbers bleeds
       if (G.has(a, 'blitzkrieg') && at.troops < at.def + (d.troops / Math.max(1, d.tiles)) * Math.min(at.front.length, 400) * 0.5) cost *= 1.5;
     }
-    // concentrated forces near the clicked mark: cheaper and faster there, thinner elsewhere
-    if (at.fx != null && at.press > 0) {
-      const dd = Math.hypot(x - at.fx, y - at.fy);
+    // concentrated forces near the clicked mark (or the plan's objectives): cheaper and faster there, thinner elsewhere
+    if (at.stance === 'broad') cost *= 0.92;          // BROAD FRONT: even pressure along the whole line
+    else if (at.fx != null && at.press > 0) {
+      const dd = Math.sqrt(focusD2(at, x, y));
       const near = Math.exp(-dd / 45);
       cost *= 1 - 0.22 * at.press * near + 0.12 * at.press * (1 - near);
       slow *= 1 - 0.35 * at.press * near;
@@ -249,6 +253,13 @@
     return { cost, slow, digIn };
   };
 
+  // squared distance to the nearest point of main effort (a click, or the battle plan's objectives / flanks)
+  function focusD2(at, x, y) {
+    if (at.foci && at.foci.length) { let m = 1e18; for (const f of at.foci) { const d2 = (x - f[0]) * (x - f[0]) + (y - f[1]) * (y - f[1]); if (d2 < m) m = d2; } return m; }
+    return (x - at.fx) * (x - at.fx) + (y - at.fy) * (y - at.fy);
+  }
+  War.focusD2 = focusD2;
+
   War.tick = function (dt) {
     const S = G.S, owner = S.owner;
     for (let i = 0; i < S.attacks.length; i++) {
@@ -258,7 +269,7 @@
       if (!a.alive) { at.done = true; continue; }
       if (at.to && (!S.nations[at.to].alive || !G.canAttack(at.from, at.to))) { War.finish(at, true); continue; }
       if (at.to && S.t >= at.defNext) War.aiDefend(at);
-      if (at.press > 0) at.press = Math.max(0.15, at.press - 0.01 * dt);
+      if (at.press > 0 && !at.foci) at.press = Math.max(0.15, at.press - 0.01 * dt); // a battle plan keeps up the pressure by itself
       let speed = (C.ATTACK_SPEED_BASE + Math.sqrt(Math.max(0, at.troops)) * C.ATTACK_SPEED_SQRT) * G.mod(a, 'attackSpeed');
       if (!at.to) speed *= C.EXPAND_SPEED_MULT;
       at.budget += speed * dt;
@@ -272,7 +283,7 @@
           continue;
         }
         let k = S.rng.int(at.front.length);
-        if (at.fx != null && at.press > 0.02 && at.front.length > 2) {
+        if (at.fx != null && at.press > 0.02 && at.front.length > 2 && at.stance !== 'broad') {
           // tournament pick: more pressure (and Blitzkrieg / Spearhead) = stronger pull toward the mark
           const tries = 1 + Math.round(at.press * 5 * G.mod(a, 'breakthrough'));
           const W0 = World.W;
@@ -280,7 +291,7 @@
           for (let q = 0; q < tries; q++) {
             const kk = q === 0 ? k : S.rng.int(at.front.length);
             const tt = at.front[kk], tx = tt % W0, ty = (tt / W0) | 0;
-            let sc = (tx - at.fx) * (tx - at.fx) + (ty - at.fy) * (ty - at.fy);
+            let sc = focusD2(at, tx, ty);
             if (at.to && fortFactor(at.to, tx, ty, at.from)) sc += 3600; // seek the gaps between forts
             if (sc < bd) { bd = sc; k = kk; }
           }

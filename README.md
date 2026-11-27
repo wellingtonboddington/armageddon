@@ -33,6 +33,7 @@ An original, fully offline real-time grand strategy game in a single HTML file. 
   - Divisions stay hidden in garrison until you press `T` on a front, attack, or get invaded. When you're invaded they jump straight onto the threatened line, and gaps between them are weak spots for the enemy.
   - Divisions are buffs on the land where they stand. Hover your front and press `R` to send an armoured division there, or `F` for an infantry division. Press again on the same spot to stack up to 3. `T` sends the whole army along the front with the nation under the cursor; `T` again stands down. Right-click a flag to send it back to reserve.
   - The DIVISIONS panel (left, above VESPER) shows armour and infantry and what is in reserve, with TRAIN ALL (a fully trained division counts ×2; only new divisions can be trained), UPGRADE and +1 DIVISION. You can also click ARMOUR or INFANTRY there and then click the front.
+  - **Battle plans:** click a division's flag to select it (shift-click adds more). With divisions selected, a click is an order and never sends troops: enemy land sets an **objective**, an enemy division's flag means **engage** (they hunt it and fight it when in reach, until one side is destroyed), your land moves them. Divisions stand on your side of the line and move up as it advances. Pick an attack plan in the DIVISIONS panel (**SPEARHEAD**: drive at the objectives · **BROAD**: even pressure, 8% cheaper · **ENCIRCLE**: two prongs behind both ends of the front to close a pocket · **HOLD**: dig in, +15% defence, no advance) and press `X` to execute: one attack goes in with your attack % and follows the plan without more clicks.
   - A stack (up to 3 on one spot): the front division digs in 33% faster and attacks advance 10% faster; attackers pay 25% more troops and the defender loses ground 25% slower.
   - Divisions that were on the line before the enemy invaded defend 15% better and give ground 15% slower. That holds if you pressed `T` while the enemy wasn't attacking, including in a pause between their attacks.
   - The enemy sees divisions that are training or moving on your shared border, and you see theirs.
@@ -72,6 +73,8 @@ An original, fully offline real-time grand strategy game in a single HTML file. 
 | `1`–`8` | City, Port, Factory, Hub, Enrichment, Fort, Warship, Silo |
 | `R` / `F` | Send an armoured / infantry division to the spot under the cursor (again = stack) |
 | `T` | Whole army to the front with the nation under the cursor; again = stand down |
+| Click a division flag | Select it (Shift adds); then click enemy land = objective, an enemy flag = engage, your land = move — no troops are sent |
+| `X` | Execute the battle plan (one attack that follows your objectives) |
 | Right click a division flag | Send it back to reserve (Shift = the whole stack) |
 | `K` `G` `Y` `U` `J` | Radar, SAM, ABM, Laser, Aegis Net |
 | `Z` `N` `H` `I` `M` `O` `E` | Airstrike, Tactical, Hypersonic, ICBM, MIRV, Orbital, EMP |

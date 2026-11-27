@@ -494,3 +494,9 @@ body.watch .hud-bc .buildbar, body.watch .hud-bc .stats, body.watch #h-dock, bod
 .morale-chip { background: rgba(14, 13, 10, .9); border: 1px solid var(--line2); padding: 2px 10px; font-size: 10.5px; letter-spacing: .1em; }
 .morale-chip b { color: var(--y2); }
 .morale-chip.low b { color: var(--red); }
+
+.dv-plan { display: flex; gap: 3px; align-items: center; margin: 6px 8px 0; flex-wrap: wrap; }
+.dv-plan .lbl { font-size: 9px; letter-spacing: .12em; color: var(--dim); margin-right: 3px; }
+.dv-plan .btn { padding: 3px 6px; font-size: 9.5px; }
+.dv-exec { display: block; width: calc(100% - 16px); margin: 5px 8px 0; padding: 5px 8px; font-size: 10.5px; }
+.dv-exec[disabled] { opacity: .45; cursor: default; }

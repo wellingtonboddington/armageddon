@@ -683,89 +683,158 @@
     ctx.setLineDash([]);
     ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x1 - ux * hl - uy * hl * 0.55, y1 - uy * hl + ux * hl * 0.55); ctx.lineTo(x1 - ux * hl + uy * hl * 0.55, y1 - uy * hl - ux * hl * 0.55); ctx.closePath(); ctx.fill();
   }
+  // a bold battle-plan arrow (war-map style): dark outline, coloured body, slight curve, filled head
+  function planArrow(x0, y0, x1, y1, col, w) {
+    const dx = x1 - x0, dy = y1 - y0, L = Math.hypot(dx, dy);
+    if (L < 14) return;
+    const ux = dx / L, uy = dy / L, nx = -uy, ny = ux;
+    const bend = Math.min(40, L * 0.12);
+    const cx = (x0 + x1) / 2 + nx * bend, cy = (y0 + y1) / 2 + ny * bend;
+    const hl = Math.min(16, L * 0.3) * (w / 4);
+    // tangent at the end of the curve points from the control point to the tip
+    let tx = x1 - cx, ty = y1 - cy; const tl = Math.hypot(tx, ty) || 1; tx /= tl; ty /= tl;
+    const bx = x1 - tx * hl, by = y1 - ty * hl;
+    for (const [c, lw] of [['rgba(10,10,8,0.85)', w + 3], [col, w]]) {
+      ctx.strokeStyle = c; ctx.lineWidth = lw; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.quadraticCurveTo(cx, cy, bx, by); ctx.stroke();
+    }
+    ctx.lineCap = 'butt';
+    const hw = hl * 0.62;
+    ctx.beginPath(); ctx.moveTo(x1 + tx * 1.5, y1 + ty * 1.5); ctx.lineTo(bx - ty * hw, by + tx * hw); ctx.lineTo(bx + ty * hw, by - tx * hw); ctx.closePath();
+    ctx.fillStyle = 'rgba(10,10,8,0.85)'; ctx.fill(); ctx.strokeStyle = 'rgba(10,10,8,0.85)'; ctx.lineWidth = 3; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(bx - ty * hw * 0.8, by + tx * hw * 0.8); ctx.lineTo(bx + ty * hw * 0.8, by - tx * hw * 0.8); ctx.closePath();
+    ctx.fillStyle = col; ctx.fill();
+  }
+  const DIV_FADE = 0.5;
   function drawDivisions() {
     const S = G.S, p = G.player();
     if (!MP.Div) return;
     const dt = Math.min(0.1, Math.max(0, timeNow - divLastT)); divLastT = timeNow;
-    const kS = 1 - Math.exp(-dt * 8);
+    const kS = 1 - Math.exp(-dt * 7), kO = 1 - Math.exp(-dt * 9);
     const fw = Math.round(U.clamp(cam.z * 7.5, 28, 50)), fh = Math.round(fw * 0.62);
+    const sel = MP.HUD && MP.HUD.divSel;
     const plan = p && p.divPlan;
     const vis = [];
     for (const n of S.nations) {
       if (!n || !n.alive || !n.divs || !n.divs.length) continue;
       for (const d of n.divs) {
-        // glide toward the simulated position; snap on a long jump (and play the deploy animation)
+        // glide toward the simulated position (snap only after an unseen jump)
         if (d.rx == null || U.dist2(d.rx, d.ry, d.x, d.y) > 70 * 70) { d.rx = d.x; d.ry = d.y; }
         else { d.rx += (d.x - d.rx) * kS; d.ry += (d.y - d.ry) * kS; }
-        if (d.deployT !== d._depSeen) { d._depSeen = d.deployT; d._dep = timeNow; }
         d._sx = null; d._hx = null;
-        if (!MP.Div.visibleTo(d, p)) continue;
-        if (!onScreen(d.rx, d.ry, 50)) continue;
-        const [sx, sy] = R.w2s(d.rx, d.ry);
-        d._px = sx; d._py = sy;
+        const on = MP.Div.visibleTo(d, p);
+        if (on) { if (!(d._lastVis > timeNow - DIV_FADE)) d._appear = timeNow; d._lastVis = timeNow; d._wx = d.rx; d._wy = d.ry; }
+        const fade = on ? U.clamp((timeNow - d._appear) / DIV_FADE, 0, 1) : U.clamp(1 - (timeNow - (d._lastVis || -9)) / DIV_FADE, 0, 1);
+        if (fade <= 0) continue;
+        const wx = on ? d.rx : d._wx, wy = on ? d.ry : d._wy;   // fading out: stay where it was last seen
+        if (!onScreen(wx, wy, 50)) continue;
+        const [sx, sy] = R.w2s(wx, wy);
+        d._px = sx; d._py = sy; d._fade = fade;
         vis.push(d);
       }
     }
-    // orders: where own divisions are heading, and the point a held division is pushing toward
+    // orders: where own divisions are heading, their objectives on hostile ground, and the divisions they hunt
+    const arrows = [];
     for (const d of vis) {
-      if (!p || d.owner !== p.id) continue;
+      if (!p || d.owner !== p.id || d._fade < 1) continue;
       const [tx, ty] = R.w2s(d.tx, d.ty);
-      if (U.dist2(d.rx, d.ry, d.tx, d.ty) > 6) arrow(d._px, d._py, tx, ty, 'rgba(255,210,31,0.55)', 1.4, [5, 4]);
-      else if (d.mode === 'hold' && !d.slot && U.dist2(d.ax, d.ay, d.tx, d.ty) > 9) { const [ax, ay] = R.w2s(d.ax, d.ay); arrow(d._px, d._py, ax, ay, d.type === 'arm' ? 'rgba(255,176,0,0.8)' : 'rgba(236,230,207,0.7)', 2.2); }
-      if ((plan || d.sel) && d.src) { const [ax, ay] = R.w2s(d.src.x, d.src.y); ctx.strokeStyle = 'rgba(255,210,31,0.22)'; ctx.setLineDash([2, 5]); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(d._px, d._py); ctx.stroke(); ctx.setLineDash([]); }
+      if (U.dist2(d.rx, d.ry, d.tx, d.ty) > 6) arrow(d._px, d._py, tx, ty, 'rgba(255,210,31,0.5)', 1.3, [4, 4]);
+      if (d.mode === 'hold' && d.ax != null && !(d.slot > 0)) {
+        if (d.engage) {
+          const e = MP.Div.byId(d.engage.owner, d.engage.id);
+          const [ex, ey] = e && e._lastVis === timeNow ? [e._px, e._py] : R.w2s(d.ax, d.ay);
+          arrows.push([d._px, d._py - 4, ex, ey - 4, 'rgba(255,68,51,0.95)', 3.5]);
+        } else if (S.owner[Math.floor(d.ax) + Math.floor(d.ay) * World.W] !== p.id) {
+          const [ax, ay] = R.w2s(d.ax, d.ay);
+          arrows.push([d._px, d._py - 4, ax, ay, d.type === 'arm' ? 'rgba(255,176,0,0.95)' : 'rgba(255,224,120,0.9)', 4]);
+        }
+      }
+      if ((plan || (sel && sel.has(d.id))) && d.src) { const [ax, ay] = R.w2s(d.src.x, d.src.y); ctx.strokeStyle = 'rgba(255,210,31,0.22)'; ctx.setLineDash([2, 5]); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(d._px, d._py); ctx.stroke(); ctx.setLineDash([]); }
     }
-    // a stack sent to one spot is one formation: one marker at its lead
+    // ENCIRCLE plan: the two prongs of each of our attacks
+    if (p && p.divStance === 'encircle') for (const at of S.attacks) {
+      if (at.done || at.from !== p.id || !at.foci || at.foci.length < 2 || !at.front.length) continue;
+      for (const f of at.foci.slice(-2)) {
+        let best = -1, bd = 1e18;
+        for (let i = 0; i < at.front.length; i += Math.max(1, (at.front.length / 120) | 0)) { const t = at.front[i], x = t % World.W, y = (t / World.W) | 0, d2 = (x - f[0]) ** 2 + (y - f[1]) ** 2; if (d2 < bd) { bd = d2; best = t; } }
+        if (best < 0) continue;
+        const [x0, y0] = R.w2s(best % World.W, (best / World.W) | 0), [x1, y1] = R.w2s(f[0], f[1]);
+        arrows.push([x0, y0, x1, y1, 'rgba(62,230,255,0.85)', 3.5]);
+      }
+    }
+    for (const a of arrows) {
+      planArrow(a[0], a[1], a[2], a[3], a[4], a[5]);
+      // objective / quarry marker at the tip
+      ctx.strokeStyle = 'rgba(10,10,8,0.85)'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(a[2], a[3], 7, 0, 7); ctx.stroke();
+      ctx.strokeStyle = a[4]; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(a[2], a[3], 7, 0, 7); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(a[2] - 11, a[3]); ctx.lineTo(a[2] - 4, a[3]); ctx.moveTo(a[2] + 4, a[3]); ctx.lineTo(a[2] + 11, a[3]); ctx.moveTo(a[2], a[3] - 11); ctx.lineTo(a[2], a[3] - 4); ctx.moveTo(a[2], a[3] + 4); ctx.lineTo(a[2], a[3] + 11); ctx.stroke();
+    }
+    // units: a stack sent to one spot is one formation (one marker at its lead); everything else its own marker
     const units = [], byAim = new Map();
     for (const d of vis) {
       if (d.mode === 'hold' && d.ax != null) {
         const k = d.owner + ':' + Math.round(d.ax * 4) + ':' + Math.round(d.ay * 4);
         let u = byAim.get(k);
-        if (!u) { u = { owner: d.owner, px: d._px, py: d._py, lead: 99, list: [] }; byAim.set(k, u); units.push(u); }
+        if (!u) { u = { owner: d.owner, list: [] }; byAim.set(k, u); units.push(u); }
         u.list.push(d);
-        if ((d.slot || 0) < u.lead) { u.lead = d.slot || 0; u.px = d._px; u.py = d._py; }
-      } else units.push({ owner: d.owner, px: d._px, py: d._py, list: [d] });
+      } else units.push({ owner: d.owner, list: [d] });
     }
-    // then merge per owner wherever markers would overlap on screen (a marker is about two flags wide)
-    const groups = [];
-    const nearX = fw * 2.4, nearY = fw * 1.8;
     for (const u of units) {
-      let g = null;
-      for (const q of groups) if (q.owner === u.owner && Math.abs(q.ax - u.px) < nearX && Math.abs(q.ay - u.py) < nearY) { g = q; break; }
-      if (!g) { g = { owner: u.owner, ax: u.px, ay: u.py, list: [] }; groups.push(g); }
-      for (const d of u.list) g.list.push(d);
+      if (u.list.length > 1) u.list.sort((a, b) => (a.slot || 0) - (b.slot || 0) || a.id - b.id);
+      u.px = u.list[0]._px; u.py = u.list[0]._py;
     }
-    for (const g of groups) {
-      const n = S.nations[g.owner];
+    // overlapping markers ease apart (no popping merges); a thin leader line shows where a nudged marker really is
+    const UW = fw * 1.85, UH = fh + 24;
+    if (units.length <= 90) {
+      for (const u of units) { u.ox = 0; u.oy = 0; }
+      for (let it = 0; it < 4; it++) for (let i = 0; i < units.length; i++) for (let j = i + 1; j < units.length; j++) {
+        const a = units[i], b = units[j];
+        const dx = (b.px + b.ox) - (a.px + a.ox), dy = (b.py + b.oy) - (a.py + a.oy);
+        const ox = UW - Math.abs(dx), oy = UH - Math.abs(dy);
+        if (ox <= 0 || oy <= 0) continue;
+        if (ox * 0.8 < oy) { const m = ox / 2 * (dx < 0 ? -1 : 1); a.ox -= m; b.ox += m; } else { const m = oy / 2 * (dy < 0 ? -1 : 1); a.oy -= m; b.oy += m; }
+      }
+      for (const u of units) {
+        const L = u.list[0];
+        if (L._ox == null) { L._ox = u.ox; L._oy = u.oy; } else { L._ox += (u.ox - L._ox) * kO; L._oy += (u.oy - L._oy) * kO; }
+        u.sx = Math.round(u.px + L._ox); u.sy = Math.round(u.py + L._oy);
+      }
+    } else for (const u of units) { u.sx = Math.round(u.px); u.sy = Math.round(u.py); }
+    for (const u of units) {
+      const n = S.nations[u.owner];
       const mine = p && n.id === p.id;
-      const list = g.list;
-      const sx = Math.round(g.ax), sy = Math.round(g.ay);
+      const list = u.list;
+      const sx = u.sx, sy = u.sy;
       const flag = MP.Flags.canvas(n.flag, 60, 40);
       const size = list.reduce((a, d) => a + d.size, 0);
       const arm = list.some((d) => d.type === 'arm'), inf = list.some((d) => d.type === 'inf');
       const trained = list.every((d) => d.trainedFull), unsup = list.some((d) => !d.supplied);
-      const dep = Math.max(...list.map((d) => d._dep || -9));
-      const da = U.clamp((timeNow - dep) / 0.45, 0, 1), dz = 1 + (1 - da) * 0.5;
+      const fade = Math.min(...list.map((d) => d._fade));
+      const selected = sel && list.some((d) => sel.has(d.id));
       ctx.save();
-      ctx.globalAlpha = 0.25 + 0.75 * da;
-      if (da < 1) { ctx.strokeStyle = U.rgb(n.color, 1 - da); ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(sx, sy + 2, fw * (0.4 + da), fw * (0.14 + da * 0.35), 0, 0, 7); ctx.stroke(); }
-      ctx.translate(sx, sy); ctx.scale(dz, dz); ctx.translate(-sx, -sy);
-      // plate (unit counter) on the ground, pole, waving flag
+      ctx.globalAlpha = fade;
+      if (Math.abs(sx - u.px) + Math.abs(sy - u.py) > 8) { ctx.strokeStyle = 'rgba(236,230,207,0.45)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(u.px, u.py); ctx.lineTo(sx, sy); ctx.stroke(); ctx.fillStyle = 'rgba(236,230,207,0.7)'; ctx.beginPath(); ctx.arc(u.px, u.py, 2, 0, 7); ctx.fill(); }
+      const zoomIn = 1 + (1 - fade) * 0.25;
+      ctx.translate(sx, sy); ctx.scale(zoomIn, zoomIn); ctx.translate(-sx, -sy);
       const label = U.fmtK(size);
       ctx.font = `bold ${Math.round(U.clamp(fw * 0.3, 9, 13))}px ${MP.FONT_MONO}`;
       const tw = ctx.measureText(label).width;
       const ph = Math.round(U.clamp(fw * 0.42, 12, 17)), symW = Math.round(ph * 1.45);
       const pw = symW + tw + 12, px = sx - pw / 2, py = sy - ph / 2;
+      if (selected) { ctx.strokeStyle = '#ffd21f'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(sx, sy + 1, pw * 0.72 + Math.sin(timeNow * 5) * 1.5, ph * 1.25, 0, 0, 7); ctx.stroke(); ctx.fillStyle = 'rgba(255,210,31,0.12)'; ctx.fill(); }
       ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.beginPath(); ctx.ellipse(sx, sy + ph / 2 + 2, pw * 0.55, 3.5, 0, 0, 7); ctx.fill();
       const poleTop = py - fh - 9;
       ctx.strokeStyle = 'rgba(10,10,8,0.85)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(px + 3, py); ctx.lineTo(px + 3, poleTop); ctx.stroke();
       ctx.strokeStyle = '#d8d2bc'; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(px + 3, py); ctx.lineTo(px + 3, poleTop - 1); ctx.stroke();
       ctx.fillStyle = '#d8d2bc'; ctx.beginPath(); ctx.arc(px + 3, poleTop - 1.5, 1.8, 0, 7); ctx.fill();
-      // stacked divisions: furled flags peeking out behind
-      for (let k = Math.min(2, list.length - 1); k >= 1; k--) { ctx.globalAlpha *= 0.85; ctx.drawImage(flag, px + 4 + k * 4, poleTop - k * 3, fw * 0.92, fh * 0.92); ctx.globalAlpha = (0.25 + 0.75 * da); }
-      const SL = 8, ph0 = (n.id * 1.7) % 6.28, amp = fh * 0.075;
+      for (let k = Math.min(2, list.length - 1); k >= 1; k--) { ctx.globalAlpha = fade * 0.85; ctx.drawImage(flag, px + 4 + k * 4, poleTop - k * 3, fw * 0.92, fh * 0.92); ctx.globalAlpha = fade; }
+      // waving flag: gentle travelling wave, a touch livelier while the unit is on the move
+      const moving = list.some((d) => U.dist2(d.rx, d.ry, d.tx, d.ty) > 4);
+      const SL = R.quality === 'low' ? 1 : R.quality === 'balanced' ? 4 : 8, ph0 = (n.id * 1.7 + list[0].id * 0.37) % 6.28, amp = fh * (moving ? 0.1 : 0.06), sp = moving ? 4.2 : 2.6;
       for (let i = 0; i < SL; i++) {
-        const w0 = fw / SL, dyw = Math.sin(timeNow * 3.1 + i * 0.8 + ph0) * amp * (i / (SL - 1));
-        const shade = 0.12 * Math.sin(timeNow * 3.1 + i * 0.8 + ph0 + 1.2) * (i / (SL - 1));
+        const wv = SL > 1 ? i / (SL - 1) : 0;
+        const w0 = fw / SL, dyw = Math.sin(timeNow * sp + i * 0.8 + ph0) * amp * wv;
+        const shade = 0.1 * Math.sin(timeNow * sp + i * 0.8 + ph0 + 1.2) * wv;
         ctx.fillStyle = 'rgba(10,10,8,0.9)'; ctx.fillRect(px + 4 + i * w0 - 0.5, poleTop + dyw - 1, w0 + 1, fh + 2);
         ctx.drawImage(flag, i * 60 / SL, 0, 60 / SL, 40, px + 4 + i * w0, poleTop + dyw, w0 + 0.6, fh);
         if (shade) { ctx.fillStyle = shade > 0 ? `rgba(255,255,255,${shade})` : `rgba(0,0,0,${-shade * 1.6})`; ctx.fillRect(px + 4 + i * w0, poleTop + dyw, w0 + 0.6, fh); }
@@ -786,9 +855,9 @@
       ctx.font = `bold ${Math.round(U.clamp(fw * 0.3, 9, 13))}px ${MP.FONT_MONO}`;
       ctx.fillStyle = '#ece6cf'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
       ctx.fillText(label, px + symW + 6, py + ph / 2 + 0.5);
+      if (list.some((d) => d.engage)) { ctx.fillStyle = '#ff4433'; ctx.font = `bold 11px ${MP.FONT_MONO}`; ctx.textAlign = 'center'; ctx.fillText('⚔', px + pw + 7, py + ph / 2 + 0.5); }
       const tr = list.find((d) => d.training);
       if (tr) { ctx.strokeStyle = '#3ee6ff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(px, py + ph + 2); ctx.lineTo(px + pw * tr.trained, py + ph + 2); ctx.stroke(); }
-      if (list.some((d) => d.sel)) { ctx.strokeStyle = '#ffd21f'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(sx, sy, pw * 0.7 + Math.sin(timeNow * 6) * 2, ph * 1.4, 0, 0, 7); ctx.stroke(); }
       ctx.restore();
       for (const d of list) { d._sx = sx; d._sy = sy; d._hx = sx; d._hy = sy - fh * 0.45; }
     }

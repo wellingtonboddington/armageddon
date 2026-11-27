@@ -112,14 +112,17 @@
       // movement (every tick)
       const mv = G.mod(n, 'divMove');
       for (const d of divs) {
+        // out of sight in reserve: no march to watch, it is simply home
+        if (d.mode === 'garrison' && !(d.vis > S.t)) { if (d.x !== d.tx || d.y !== d.ty) { d.x = d.tx; d.y = d.ty; d.rx = null; } continue; }
         const dx = d.tx - d.x, dy = d.ty - d.y, L = Math.hypot(dx, dy);
         if (L > 0.05) {
-          // cruise, then ease into position over the last few tiles
+          // cruise, then ease into position over the last few tiles; rushing to a threatened line is 5× faster
           let base = (d.type === 'arm' ? D.moveArm : D.moveInf) * mv * 2.2;
           if (d.mode === 'hold') base *= d.type === 'arm' ? G.mod(n, 'armorDispatch') : G.mod(n, 'infDispatch');
+          if (d.rush) base *= 5;
           const sp = base * dt * U.clamp(L / 3, 0.25, 1);
-          if (L <= sp) { d.x = d.tx; d.y = d.ty; } else { d.x += dx / L * sp; d.y += dy / L * sp; }
-        }
+          if (L <= sp) { d.x = d.tx; d.y = d.ty; d.rush = false; } else { d.x += dx / L * sp; d.y += dy / L * sp; }
+        } else d.rush = false;
       }
       if (!slow) continue;
       // once a second: spawn, refill, supply, training, assignment, stacks
@@ -145,7 +148,9 @@
         const t = Math.round(d.x) + Math.round(d.y) * World.W;
         if (S.owner[t] !== n.id && d.mode !== 'hold') { const u = nearOwn(n.id, Math.round(d.x), Math.round(d.y), 14); if (u >= 0) { d.tx = u % World.W + 0.5; d.ty = ((u / World.W) | 0) + 0.5; } }
       }
+      Div.fight(n);
       Div.updateHolds(n);
+      if (n.divStance || (n.divs && n.divs.some((d) => d.mode === 'hold'))) Div.updatePlanFoci(n);
       Div.assign(n);
       Div.computeStacks(n);
     }
@@ -169,19 +174,45 @@
   }
   Div.nearOwn = nearOwn;
   const AIM_SNAP = 6;
-  // where a held division stands: our ground nearest the aimed point; 2nd/3rd of a stack stand right behind
-  function holdTarget(n, d) {
-    const W = World.W;
-    const t = nearOwn(n.id, Math.round(d.ax), Math.round(d.ay), 45);
-    if (t < 0) return null;
-    let x = t % W + 0.5, y = ((t / W) | 0) + 0.5;
-    if (d.slot) {
-      let vx = x - d.ax, vy = y - d.ay, L = Math.hypot(vx, vy);
-      if (L < 1.5) { vx = n.sx / Math.max(1, n.tiles) - x; vy = n.sy / Math.max(1, n.tiles) - y; L = Math.hypot(vx, vy) || 1; }
-      const u = nearOwn(n.id, Math.round(x + vx / L * 3.4 * d.slot), Math.round(y + vy / L * 3.4 * d.slot), 6);
-      if (u >= 0) { x = u % W + 0.5; y = ((u / W) | 0) + 0.5; }
+  // our front tile best placed for a division aiming at (ax, ay): the edge of our land as close to the aim as it
+  // reaches (against the aimed-at enemy when the aim is in enemy land), mildly preferring tiles near where it is now
+  function frontTile(n, ax, ay, px, py, foe) {
+    const S = G.S, W = World.W, N = World.N, owner = S.owner, land = World.land, id = n.id;
+    const stride = n.border.size > 5000 ? Math.ceil(n.border.size / 5000) : 1;
+    let best = -1, bs = 1e18, k = 0;
+    for (const t of n.border) {
+      if (stride > 1 && (k++ % stride) !== 0) continue;
+      const x = t % W;
+      let front = false;
+      const nb0 = x > 0 ? t - 1 : -1, nb1 = x < W - 1 ? t + 1 : -1, nb2 = t - W, nb3 = t + W;
+      for (const u of [nb0, nb1, nb2, nb3]) { if (u < 0 || u >= N || !land[u]) continue; const o = owner[u]; if (o !== id && (!foe || o === foe)) { front = true; break; } }
+      if (!front) continue;
+      const y = (t / W) | 0;
+      const sc = (x - ax) * (x - ax) + (y - ay) * (y - ay) + 0.12 * ((x - px) * (x - px) + (y - py) * (y - py));
+      if (sc < bs) { bs = sc; best = t; }
     }
-    return [x, y];
+    if (best < 0 && foe) return frontTile(n, ax, ay, px, py, 0);
+    return best;
+  }
+  Div.frontTile = frontTile;
+  // where a held division stands: on our side of the line nearest its aim — it moves up as the front advances.
+  // The 2nd/3rd of a stack stand right behind the lead.
+  function holdTarget(n, d, lead) {
+    const S = G.S, W = World.W;
+    const at = Math.floor(d.ax) + Math.floor(d.ay) * W;
+    const ao = S.owner[at];
+    let t;
+    if (lead && lead !== d && lead._ft != null) t = lead._ft;
+    else t = frontTile(n, d.ax, d.ay, d.x, d.y, ao && ao !== n.id ? ao : 0);
+    d._ft = t;
+    if (t < 0) return null;
+    const fx = t % W + 0.5, fy = ((t / W) | 0) + 0.5;
+    // step back from the line into our land: 1.5 tiles, plus 3.4 per place in the stack
+    let vx = fx - d.ax, vy = fy - d.ay, L = Math.hypot(vx, vy);
+    if (L < 1.5) { vx = n.sx / Math.max(1, n.tiles) - fx; vy = n.sy / Math.max(1, n.tiles) - fy; L = Math.hypot(vx, vy) || 1; }
+    const back = 1.5 + 3.4 * (d.slot || 0);
+    const u = nearOwn(n.id, Math.round(fx + vx / L * back - 0.5), Math.round(fy + vy / L * back - 0.5), 6);
+    return u >= 0 ? [u % W + 0.5, ((u / W) | 0) + 0.5] : [fx, fy];
   }
   Div.holdGroup = function (n, ax, ay) {
     return listOf(n).filter((d) => d.mode === 'hold' && U.dist2(d.ax, d.ay, ax, ay) < AIM_SNAP * AIM_SNAP).sort((a, b) => a.holdAt - b.holdAt || a.id - b.id);
@@ -196,12 +227,18 @@
       const g = Div.holdGroup(n, d.ax, d.ay);
       g.forEach((e, i) => { e.slot = i; e.ax = g[0].ax; e.ay = g[0].ay; seen.add(e); });
     }
+    const holdStance = n.divStance === 'hold';
+    holds.sort((a, b) => (a.slot || 0) - (b.slot || 0));
     for (const d of holds) {
-      const tg = holdTarget(n, d);
+      const o = S.owner[Math.floor(d.ax) + Math.floor(d.ay) * World.W];
+      d.front = o && o !== n.id ? o : 0;
+      // HOLD stance: stay put unless the ground under the division is lost
+      if (holdStance && d.tx != null && S.owner[Math.floor(d.tx) + Math.floor(d.ty) * World.W] === n.id && !d._newOrder) continue;
+      d._newOrder = false;
+      const lead = d.slot ? Div.holdGroup(n, d.ax, d.ay)[0] : d;
+      const tg = holdTarget(n, d, lead);
       if (!tg) { Div.sendHome(d); continue; }
       if (U.dist2(tg[0], tg[1], d.tx, d.ty) > 2.25) { d.tx = tg[0]; d.ty = tg[1]; }
-      const o = S.owner[Math.round(d.ax) + Math.round(d.ay) * World.W];
-      d.front = o && o !== n.id ? o : 0;
     }
   };
   Div.dispatch = function (n, type, wx, wy) {
@@ -219,15 +256,72 @@
     const rank = (d) => (d.mode === 'garrison' ? 0 : d.mode === 'hold' ? 2 : 1);
     pool.sort((a, b) => rank(a) - rank(b) || U.dist2(a.x, a.y, ax, ay) - U.dist2(b.x, b.y, ax, ay));
     const d = pool[0];
-    d.mode = 'hold'; d.ax = ax; d.ay = ay; d.holdAt = S.t; d.sel = false; d.vis = S.t + D.visibleFor; d.slot = here.length;
-    const tg = holdTarget(n, d);
+    d.mode = 'hold'; d.ax = ax; d.ay = ay; d.holdAt = S.t; d.sel = false; d.vis = S.t + D.visibleFor; d.slot = here.length; d._newOrder = true; d.engage = null;
+    const tg = holdTarget(n, d, d);
     if (tg) { d.tx = tg[0]; d.ty = tg[1]; }
     Div.updateHolds(n); Div.computeStacks(n);
     return { ok: true, div: d, stack: here.length + 1 };
   };
+  Div.order = function (n, list, wx, wy) {
+    const S = G.S;
+    list = list.filter((d) => d && d.owner === n.id);
+    if (!list.length) return { ok: false, reason: 'No division selected' };
+    if (!World.land[Math.floor(wx) + Math.floor(wy) * World.W]) return { ok: false, reason: 'Divisions take orders on land' };
+    const cx = list.reduce((a, d) => a + d.x, 0) / list.length, cy = list.reduce((a, d) => a + d.y, 0) / list.length;
+    let px = -(wy - cy), py = wx - cx; const L = Math.hypot(px, py) || 1; px /= L; py /= L;
+    const groups = Math.ceil(list.length / D.stackMax);
+    list.forEach((d, i) => {
+      const g = Math.floor(i / D.stackMax), off = (g - (groups - 1) / 2) * 7;
+      d.mode = 'hold'; d.ax = wx + px * off; d.ay = wy + py * off; d.holdAt = S.t + i * 1e-3; d.vis = S.t + D.visibleFor; d._newOrder = true; d.rush = false; d.engage = null;
+    });
+    Div.updateHolds(n); Div.computeStacks(n); Div.updatePlanFoci(n);
+    const o = S.owner[Math.floor(wx) + Math.floor(wy) * World.W];
+    return { ok: true, objective: o !== n.id, target: o };
+  };
+  // engage: hunt an enemy division — follow it, steer the attack at it, fight it when in range
+  Div.byId = function (owner, id) { const n = G.S.nations[owner]; return n && n.divs ? n.divs.find((x) => x.id === id) || null : null; };
+  Div.engage = function (n, list, target) {
+    const S = G.S;
+    list = list.filter((d) => d && d.owner === n.id);
+    if (!list.length || !target) return { ok: false, reason: 'No division selected' };
+    if (target.owner === n.id) return { ok: false, reason: 'That division is yours' };
+    if (!G.canAttack(n.id, target.owner)) return { ok: false, reason: G.isAllied(n.id, target.owner) ? 'That division belongs to an ally' : 'You are under a truce with them' };
+    const r = Div.order(n, list, target.x, target.y);
+    if (!r.ok) return r;
+    for (const d of list) { d.engage = { owner: target.owner, id: target.id }; }
+    Div.updateHolds(n);
+    return { ok: true, count: list.length };
+  };
+  // once a second: engaged divisions track their quarry and trade blows when close enough
+  Div.fight = function (n) {
+    const S = G.S;
+    for (const d of listOf(n)) {
+      if (!d.engage) continue;
+      const e = Div.byId(d.engage.owner, d.engage.id);
+      const en = S.nations[d.engage.owner];
+      if (!e || !en || !en.alive || d.mode !== 'hold' || !G.canAttack(n.id, en.id)) { d.engage = null; continue; }
+      d.ax = e.x; d.ay = e.y;                              // the objective moves with the enemy division
+      const reach = Div.radius(d) * 0.9 + Div.radius(e) * 0.4;
+      if (U.dist2(d.x, d.y, e.x, e.y) > reach * reach) continue;
+      MP.War.declareWar(n.id, en.id);
+      const pd = Math.max(1, Div.power(d)), pe = Math.max(1, Div.power(e)), ratio = pd / pe;
+      const hitE = Math.min(0.12, 0.04 * ratio) * Math.max(e.size, 50), hitD = Math.min(0.12, 0.03 / ratio) * Math.max(d.size, 50);
+      e.size = Math.max(0, e.size - hitE); d.size = Math.max(0, d.size - hitD);
+      d.vis = e.vis = S.t + D.visibleFor;
+      const p = G.player();
+      if (p && (n.id === p.id || en.id === p.id) && MP.FX) MP.FX.shot(d.x, d.y, e.x, e.y);
+      if (e.size < Div.maxSize(en, e) * 0.05) {
+        const arr = listOf(en), i = arr.indexOf(e); if (i >= 0) arr.splice(i, 1);
+        MP.FX && MP.FX.burst(e.x, e.y, [255, 120, 40], 6);
+        for (const x of listOf(n)) if (x.engage && x.engage.id === e.id && x.engage.owner === en.id) x.engage = null;
+        if (n.isPlayer) { MP.Game.wire('IMINT', `${en.name} ${e.type === 'arm' ? 'ARMOURED' : 'INFANTRY'} DIVISION DESTROYED`, 'good'); MP.SFX.play('explodeSmall'); }
+        if (en.isPlayer) { MP.Game.wire('IMINT', `WE LOST ${e.type === 'arm' ? 'AN ARMOURED' : 'AN INFANTRY'} DIVISION TO ${n.name}`, 'bad'); MP.SFX.play('explodeSmall'); }
+      }
+    }
+  };
   Div.sendHome = function (d) {
     const n = G.S.nations[d.owner];
-    d.mode = 'garrison'; d.front = 0; d.sel = false; d.ax = d.ay = undefined;
+    d.mode = 'garrison'; d.front = 0; d.sel = false; d.ax = d.ay = undefined; d.engage = null;
     if (n) { Div.assign(n); Div.computeStacks(n); }
   };
   // greedy, stable matching of divisions to target points: a division keeps its spot when one is still close
@@ -246,6 +340,92 @@
     }
   }
 
+  // ---------------- battle plans ----------------
+  // where the planned army stands along the front with `enemy`: evenly spread (BROAD FRONT), bunched toward the
+  // objectives (SPEARHEAD) or massed on both flanks (ENCIRCLE); stable so divisions only move when the line does
+  Div.reform = function (n, enemy, divs) {
+    const k = divs.length;
+    let pts = Div.sharedBorder(n, enemy, Math.max(k * 4, 12));
+    if (!pts.length) return;
+    const stance = n.divStance || 'spearhead';
+    const foci = planFociFor(n, enemy);
+    if (pts.length > k && foci.length && stance !== 'broad') {
+      const near = (p) => Math.min(...foci.map((f) => (p[0] - f[0]) ** 2 + (p[1] - f[1]) ** 2));
+      const keep = new Set(pts.slice().sort((a, b) => near(a) - near(b)).slice(0, Math.max(k, Math.ceil(pts.length * 0.35))));
+      pts = pts.filter((p) => keep.has(p));
+    }
+    const pick = [];
+    for (let i = 0; i < k; i++) pick.push(pts[Math.floor((i + 0.5) * pts.length / k)]);
+    const targets = pick.map((p) => insidePoint(n, p[0], p[1], 2.5));
+    assignPoints(n, divs, targets, (d, q) => { if (q) { d.tx = q[0]; d.ty = q[1]; } });
+  };
+  // focus points for an attack on `enemy`: objectives our divisions were given on its land, or (ENCIRCLE) two
+  // points behind both ends of the front so the two prongs close a pocket
+  function planFociFor(n, enemy, at) {
+    const S = G.S, W = World.W, out = [];
+    for (const d of listOf(n)) {
+      if (d.mode !== 'hold' || d.ax == null || (d.slot || 0) > 0) continue;
+      if (S.owner[Math.floor(d.ax) + Math.floor(d.ay) * W] === enemy) out.push([d.ax, d.ay]);
+    }
+    if (n.divStance === 'encircle' && at && at.front.length > 12) {
+      const f = at.front, step = Math.max(1, Math.floor(f.length / 300)), pts = [];
+      for (let i = 0; i < f.length; i += step) pts.push([f[i] % W, (f[i] / W) | 0]);
+      let mx = 0, my = 0; for (const p of pts) { mx += p[0]; my += p[1]; } mx /= pts.length; my /= pts.length;
+      let cxx = 0, cyy = 0, cxy = 0; for (const p of pts) { const a = p[0] - mx, b = p[1] - my; cxx += a * a; cyy += b * b; cxy += a * b; }
+      const ang = 0.5 * Math.atan2(2 * cxy, cxx - cyy), ux = Math.cos(ang), uy = Math.sin(ang);
+      let lo = 1e9, hi = -1e9; for (const p of pts) { const q = (p[0] - mx) * ux + (p[1] - my) * uy; if (q < lo) lo = q; if (q > hi) hi = q; }
+      const e = S.nations[enemy];
+      let nx = -uy, ny = ux;
+      const ex = e && e.tiles ? e.sx / e.tiles : mx + nx, ey = e && e.tiles ? e.sy / e.tiles : my + ny;
+      if ((ex - mx) * nx + (ey - my) * ny < 0) { nx = -nx; ny = -ny; }
+      const depth = U.clamp((hi - lo) * 0.45, 12, 90);
+      for (const fr of [0.15, 0.85]) { const q = lo + (hi - lo) * fr; out.push([mx + ux * q + nx * depth, my + uy * q + ny * depth]); }
+    }
+    return out;
+  }
+  Div.planFoci = planFociFor;
+  // once a second: our attacks follow the plan — objectives / flanks become their points of main effort
+  Div.updatePlanFoci = function (n) {
+    const S = G.S, stance = n.divStance;
+    for (const at of S.attacks) {
+      if (at.done || at.from !== n.id || at.boat) continue;
+      at.stance = stance || null;
+      if (stance === 'broad') { at.foci = null; at.press = 0; continue; }
+      const foci = planFociFor(n, at.to, at);
+      if (foci.length && at.userT != null && S.t - at.userT < 20) foci.push([at.userFx, at.userFy]); // a fresh click still counts
+      if (foci.length) {
+        at.foci = foci; at.fx = foci[0][0]; at.fy = foci[0][1];
+        at.press = Math.max(at.press, stance === 'encircle' ? 0.8 : 0.9);
+      } else at.foci = null;
+    }
+  };
+  // EXECUTE: one attack per enemy in the plan, sent once — the plan then steers it, no more clicking
+  Div.executePlan = function (n, troops) {
+    const S = G.S;
+    if (n.divStance === 'hold') return { ok: false, reason: 'The plan is set to HOLD — pick SPEARHEAD, BROAD FRONT or ENCIRCLE to attack' };
+    const targets = new Map();
+    for (const d of listOf(n)) {
+      if (d.mode !== 'hold' || d.ax == null) continue;
+      const o = S.owner[Math.floor(d.ax) + Math.floor(d.ay) * World.W];
+      if (o === n.id || (o && !G.canAttack(n.id, o))) continue;
+      if (!targets.has(o)) targets.set(o, [d.ax, d.ay]);
+    }
+    if (n.divPlan && G.canAttack(n.id, n.divPlan.enemy) && !targets.has(n.divPlan.enemy)) {
+      const e = S.nations[n.divPlan.enemy];
+      targets.set(n.divPlan.enemy, e && e.capital >= 0 ? [e.capX, e.capY] : null);
+    }
+    if (!targets.size) return { ok: false, reason: 'No plan yet: select a division flag and click enemy land to give it an objective, or press T on a front' };
+    if (n.troops < 100) return { ok: false, reason: 'Not enough troops' };
+    const each = troops / targets.size;
+    let sent = 0;
+    for (const [o, pt] of targets) {
+      const at = MP.War.launch(n.id, o, each, pt ? { fx: pt[0], fy: pt[1], plan: true } : { plan: true });
+      if (at) sent++;
+    }
+    Div.updatePlanFoci(n);
+    return sent ? { ok: true, count: sent, troops } : { ok: false, reason: 'The attack could not be launched' };
+  };
+
   // ---------------- automatic deployment ----------------
   Div.assign = function (n) {
     const S = G.S, divs = listOf(n);
@@ -256,11 +436,15 @@
     const free = divs.filter((d) => d.mode !== 'plan' && d.mode !== 'hold');
     // planned divisions fight on their own front; they only follow attacks against that enemy
     if (plan) {
-      for (const d of divs) if (d.mode === 'plan') {
+      const planned = divs.filter((d) => d.mode === 'plan');
+      for (const d of planned) {
         const fight = incoming.some((a) => a.from === plan.enemy) || outgoing.some((a) => a.to === plan.enemy);
         if (fight) d.vis = S.t + D.visibleFor;
         if (n.isPlayer) d.vis = Math.max(d.vis, S.t + 1.5);
       }
+      // the whole army re-forms along the front as it moves (every 3 s), weighted by the attack plan
+      n._planT = (n._planT || 0) + 1;
+      if (planned.length && (n._planT >= 3 || plan.reform) && n.divStance !== 'hold') { n._planT = 0; plan.reform = false; Div.reform(n, plan.enemy, planned); }
     }
     // invaded: free divisions appear on the threatened front immediately
     if (incoming.length && free.length) {
@@ -286,7 +470,7 @@
         const targets = group.map((d, j) => { const p = pts[j % pts.length]; return insidePoint(n, p[0], p[1], 2.5 + Math.floor(j / pts.length) * 4); });
         assignPoints(n, group, targets, (d, q) => {
           if (q) {
-            if (d.mode !== 'defend' || d.front !== a.from) { d.x = q[0]; d.y = q[1]; d.deployT = S.t; } // spawn straight onto the line
+            if (d.mode !== 'defend' || d.front !== a.from) d.rush = true; // race to the threatened line
             d.tx = q[0]; d.ty = q[1];
           }
           d.mode = 'defend'; d.front = a.from; d.vis = S.t + D.visibleFor;
@@ -312,11 +496,11 @@
     }
     // quiet: free divisions fall back to garrison around the capital and cities (hidden)
     for (const d of free) {
-      if (d.mode === 'garrison' && U.dist2(d.tx, d.ty, n.capX, n.capY) < 400) continue;
-      d.mode = 'garrison'; d.front = 0;
+      if (d.mode !== 'garrison') { d.mode = 'garrison'; d.front = 0; d.rush = false; }
+      if (d.vis > S.t) { d.tx = d.x; d.ty = d.y; continue; } // stays where it fought, then fades out of sight
       const spots = [[n.capX, n.capY]].concat(n.st.city.map((c) => [c.x, c.y]));
-      const s = spots[d.id % spots.length];
-      d.tx = s[0] + ((d.id * 7) % 5) - 2; d.ty = s[1] + ((d.id * 3) % 5) - 2;
+      const sp = spots[d.id % spots.length];
+      d.tx = sp[0] + ((d.id * 7) % 5) - 2; d.ty = sp[1] + ((d.id * 3) % 5) - 2;
     }
   };
 
@@ -327,7 +511,9 @@
     const step = Math.max(1, Math.floor(f.length / 200));
     for (let i = 0; i < f.length; i += step) pts.push([f[i] % W, (f[i] / W) | 0]);
     if (focus && a.fx != null && pts.length > k * 3) {
-      pts.sort((p, q) => ((p[0] - a.fx) ** 2 + (p[1] - a.fy) ** 2) - ((q[0] - a.fx) ** 2 + (q[1] - a.fy) ** 2));
+      const fo = a.foci && a.foci.length ? a.foci : [[a.fx, a.fy]];
+      const fd = (p) => { let m = 1e18; for (const f of fo) { const d2 = (p[0] - f[0]) ** 2 + (p[1] - f[1]) ** 2; if (d2 < m) m = d2; } return m; };
+      pts.sort((p, q) => fd(p) - fd(q));
       pts = pts.slice(0, Math.max(k * 3, Math.round(pts.length * 0.3)));
     }
     if (pts.length <= k) return pts.length ? pts : [[a.fx || 0, a.fy || 0]];
@@ -396,6 +582,7 @@
       const k = G.has(d, 'ironLine') ? 1.25 : D.preparedBonus; cost *= k; slow *= k;   // a front planned before they attacked
     }
     if (nearD) cost *= G.mod(d, 'hedgehog');
+    if (nearD && d.divStance === 'hold') { cost *= 1.15; slow *= 1.15; } // HOLD plan: dug-in divisions
     slow *= 1 + pd / 60000;
     return { cost: U.clamp(cost, 0.4, 3.2), slow: U.clamp(slow, 1, 3) / speed, digIn: stackA ? 0.67 : 1 };
   };

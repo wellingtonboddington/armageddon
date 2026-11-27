@@ -262,6 +262,7 @@
     const k = e.key;
     const S = G.S;
     if (k === 'Escape') {
+      if (HUD.clearDivSel()) return;
       if (HUD.mode || MP.Render.selectedShip) { HUD.clearMode(); MP.Render.selectedShip = null; return; }
       if (els['h-radial'].style.display !== 'none') { HUD.closeRadial(); return; }
       if (document.querySelector('.modal-wrap')) return;
@@ -273,6 +274,7 @@
     if (up === 'T') { HUD.toggleFront(); return; }
     if (up === 'R') { HUD.dispatchDiv('arm'); return; }
     if (up === 'F') { HUD.dispatchDiv('inf'); return; }
+    if (up === 'X') { HUD.executePlan(); return; }
     for (const t of C.BUILD_ORDER.concat(C.DEFENSE_ORDER)) if (C.BUILD[t].key === up) { HUD.setBuildMode(t); return; }
     for (const w of C.WEAPON_ORDER) if (C.WEAPON[w].key === up) { HUD.weaponClick(w); return; }
     if (k === '+' || k === '=') { HUD.ratio = Math.min(1, HUD.ratio + 0.05); HUD.syncRatio(); }
@@ -329,24 +331,32 @@
       return;
     }
     // divisions: click one to select it, then click the front to send it there
+    // divisions: click a flag to select it (shift-click adds more). With divisions selected a click is an ORDER and
+    // never sends troops: enemy land = objective, an enemy division = engage it, your land = move there.
     if (p.divs && p.divs.length) {
-      const hit = HUD.divAt(p, H.sx, H.sy);
-      const selD = p.divs.find((d) => d.sel);
-      if (hit) {
-        // clicking a stack cycles through the divisions in it
-        const stack = p.divs.filter((d) => d._sx === hit._sx && d._sy === hit._sy);
-        const cur = stack.findIndex((d) => d.sel);
-        for (const d of p.divs) d.sel = false;
-        const nxt = stack[(cur + 1) % stack.length];
-        if (cur === stack.length - 1 && stack.length === 1) { MP.SFX.play('close'); return; }
-        nxt.sel = true; MP.SFX.play('click');
-        HUD.toast(`${nxt.type === 'arm' ? 'Armoured' : 'Infantry'} division · ${nxt.gear} · ${U.fmtInt(nxt.size)}${nxt.trainedFull ? ' · trained' : ''} — click the front to send it there · right-click sends it home`, 'info');
-        return;
+      const own = HUD.divAt(p, H.sx, H.sy);
+      if (own) {
+        const unit = p.divs.filter((d) => d._sx === own._sx && d._sy === own._sy);
+        const allIn = unit.every((d) => HUD.divSel.has(d.id));
+        if (!e.shiftKey) HUD.divSel.clear();
+        for (const d of unit) { if (allIn && e.shiftKey) HUD.divSel.delete(d.id); else HUD.divSel.add(d.id); }
+        MP.SFX.play('click'); HUD.syncDivSel(); return;
       }
-      if (selD && MP.Div.nearOwn(p.id, Math.floor(H.wx), Math.floor(H.wy), 45) >= 0) {
-        selD.mode = 'garrison'; selD.sel = false;
-        const r = MP.Div.dispatch(p, selD.type, H.wx, H.wy);
-        MP.SFX.play(r.ok ? 'send' : 'error'); if (!r.ok) HUD.toast(r.reason, 'bad');
+      const sel = HUD.selectedDivs();
+      if (sel.length) {
+        const foe = HUD.foeDivAt(p, H.sx, H.sy);
+        let r;
+        if (foe) {
+          r = MP.Div.engage(p, sel, foe);
+          if (r.ok) HUD.toast(`${sel.length > 1 ? sel.length + ' divisions engage' : 'Division engages'} the ${S.nations[foe.owner].name} ${foe.type === 'arm' ? 'armour' : 'infantry'} — they hunt it down when in reach`, 'good');
+        } else {
+          r = MP.Div.order(p, sel, H.wx, H.wy);
+          if (r.ok) HUD.toast(r.objective ? `Objective set${r.target ? ' in ' + S.nations[r.target].name : ''} — press X to EXECUTE the plan (or attack them): your attack will drive here by itself` : 'Divisions move up to that part of the line', 'good');
+        }
+        if (!r.ok) { MP.SFX.play('error'); HUD.toast(r.reason, 'bad'); return; }
+        MP.SFX.play('send'); MP.FX && MP.FX.ping(H.wx, H.wy, foe ? [255, 68, 51] : [255, 210, 31]);
+        if (!e.shiftKey) HUD.divSel.clear();
+        HUD.syncDivSel(); HUD.renderDivs(true);
         return;
       }
     }
@@ -448,6 +458,7 @@
     const H = MP.Render.hover;
     if (!S || H.t < 0) return;
     if (HUD.mode) { HUD.clearMode(); return; }
+    if (HUD.clearDivSel()) return;
     if (MP.Render.selectedShip && !World.land[H.t]) { MP.Naval.assignPatrol(MP.Render.selectedShip, H.wx, H.wy); MP.Render.selectedShip = null; HUD.toast('Patrol assigned', 'info'); return; }
     if (MP.Render.selectedShip) { MP.Render.selectedShip = null; return; }
     const p = G.player();
@@ -596,7 +607,48 @@
       <div class="ni-list"><span>At war with</span>${wars.length ? wars.slice(0, 8).map((a) => U.esc(a.name)).join(', ') : '<i class="dim">nobody</i>'}</div>`);
   };
 
-  // ---------------- divisions: R armour · F infantry · T whole army ----------------
+  // ---------------- divisions: R armour · F infantry · T whole army · selection orders · X execute ----------------
+  HUD.divSel = new Set();
+  HUD.selectedDivs = function () { const p = G.player(); return p && p.divs ? p.divs.filter((d) => HUD.divSel.has(d.id)) : []; };
+  HUD.syncDivSel = function () {
+    const sel = HUD.selectedDivs();
+    for (const id of Array.from(HUD.divSel)) if (!sel.some((d) => d.id === id)) HUD.divSel.delete(id);
+    if (sel.length) {
+      const arm = sel.filter((d) => d.type === 'arm').length;
+      HUD._divBanner = true;
+      HUD.banner(`<b>${sel.length} DIVISION${sel.length > 1 ? 'S' : ''} SELECTED</b>${arm ? ' (' + arm + ' armour)' : ''} · click <b>enemy land</b> = objective (no troops sent) · click an <b>enemy flag</b> = engage it · click <b>your land</b> = move · shift-click flags to add · <b>X</b> executes the plan · right-click deselects`);
+    } else if (HUD._divBanner) { HUD._divBanner = false; HUD.banner(null); }
+  };
+  HUD.clearDivSel = function () { if (!HUD.divSel.size) return false; HUD.divSel.clear(); HUD.syncDivSel(); MP.SFX.play('close'); return true; };
+  // a visible enemy division under the cursor
+  HUD.foeDivAt = function (p, sx, sy) {
+    let hit = null, hd = 26 * 26;
+    for (const n of G.S.nations) {
+      if (!n || !n.alive || n === p || !n.divs) continue;
+      for (const d of n.divs) { if (d._hx == null) continue; const dd = (d._hx - sx) ** 2 + (d._hy - sy) ** 2; if (dd < hd) { hd = dd; hit = d; } }
+    }
+    return hit;
+  };
+  HUD.executePlan = function () {
+    const S = G.S, p = G.player();
+    if (!S || !p || !p.alive || S.phase !== 'play') return;
+    const r = MP.Div.executePlan(p, p.troops * HUD.ratio);
+    if (!r.ok) { MP.SFX.play('error'); HUD.toast(r.reason, 'bad'); return; }
+    MP.SFX.play('attack');
+    const names = { spearhead: 'SPEARHEAD', broad: 'BROAD FRONT', encircle: 'ENCIRCLE' };
+    HUD.toast(`Plan executed · ${names[p.divStance] || 'SPEARHEAD'} · ${U.fmtK(r.troops)} troops on ${r.count} front${r.count > 1 ? 's' : ''} — the attack follows your objectives by itself`, 'good');
+    MP.Game.wire('IMINT', `BATTLE PLAN EXECUTED — ${names[p.divStance] || 'SPEARHEAD'}`, 'good');
+  };
+  HUD.setStance = function (st) {
+    const p = G.player(); if (!p) return;
+    p.divStance = st; MP.settings.set('divStance', st);
+    if (p.divPlan) p.divPlan.reform = true;
+    MP.Div.updatePlanFoci(p);
+    MP.SFX.play('toggle');
+    const tip = { spearhead: 'SPEARHEAD — attacks drive hard at your objectives', broad: 'BROAD FRONT — even pressure along the whole line, 8% cheaper', encircle: 'ENCIRCLE — two prongs behind both ends of the front close a pocket', hold: 'HOLD — divisions dig in where they stand (+15% defence) and do not advance' }[st];
+    HUD.toast(tip, 'info');
+    HUD.renderDivs(true);
+  };
   HUD.divAt = function (p, sx, sy) {
     let hit = null, hd = 24 * 24;
     for (const d of p.divs) { if (d._hx == null) continue; const dd = (d._hx - sx) ** 2 + (d._hy - sy) ** 2; if (dd < hd) { hd = dd; hit = d; } }
@@ -671,7 +723,9 @@
     const total = divs.reduce((a, d) => a + d.size, 0);
     const tc = MP.Div.trainCost(p) * untrained, uc = MP.Div.upgradeCost(p), rc = MP.Div.raiseCost(p);
     const maxed = (p.divLevel || 0) >= C.DIV.upgradeMax;
-    const sig = [divs.length, arm.length, free(arm), free(inf), untrained, training, p.divLevel || 0, Math.round(total / 500), p.credits >= tc, p.credits >= uc, p.credits >= rc, HUD.mode && HUD.mode.kind === 'div' ? HUD.mode.type : ''].join('|');
+    if (p.divStance == null) p.divStance = MP.settings.get('divStance', 'spearhead');
+    const objs = divs.filter((d) => d.mode === 'hold' && d.ax != null && S.owner[Math.floor(d.ax) + Math.floor(d.ay) * World.W] !== p.id).length;
+    const sig = [divs.length, arm.length, free(arm), free(inf), untrained, training, p.divLevel || 0, Math.round(total / 500), p.credits >= tc, p.credits >= uc, p.credits >= rc, HUD.mode && HUD.mode.kind === 'div' ? HUD.mode.type : '', p.divStance, objs, !!p.divPlan].join('|');
     if (!force && sig === divSig) return;
     divSig = sig;
     box.style.display = '';
@@ -686,7 +740,9 @@
         <button class="btn sm" data-fa="upgrade" ${!maxed && p.credits >= uc ? '' : 'disabled'} title="Every division gets bigger and stronger">${maxed ? 'MAX LEVEL' : 'UPGRADE · ' + U.fmtK(uc)}</button>
         <button class="btn sm" data-fa="raise" ${p.credits >= rc ? '' : 'disabled'} title="Raise one more division">+1 DIVISION · ${U.fmtK(rc)}</button>
       </div>
-      <div class="dv-help">Hover your front and press <b>R</b> (armour) or <b>F</b> (infantry): that division goes there and buffs the land around it, attacking and defending. Press again on the same spot to <b>stack</b> up to 3. <b>T</b> sends the whole army to a front. Right-click a flag sends it home.</div>`;
+      <div class="dv-plan"><span class="lbl">ATTACK PLAN</span>${[['spearhead', 'SPEARHEAD', 'Attacks drive hard at your objectives'], ['broad', 'BROAD', 'Even pressure along the whole line, 8% cheaper'], ['encircle', 'ENCIRCLE', 'Two prongs behind both ends of the front close a pocket'], ['hold', 'HOLD', 'Divisions dig in where they stand (+15% defence) and do not advance']].map(([id, l, t]) => `<button class="btn sm ${p.divStance === id ? 'on' : ''}" data-st="${id}" title="${t}">${l}</button>`).join('')}</div>
+      <button class="btn sm dv-exec ${objs || p.divPlan ? 'primary' : ''}" data-fa="exec" ${p.divStance === 'hold' ? 'disabled' : ''} title="Launch one attack per enemy in your plan with your attack % — it then follows your objectives without more clicks">⚔ EXECUTE PLAN · X${objs ? ' · ' + objs + ' OBJECTIVE' + (objs > 1 ? 'S' : '') : ''}</button>
+      <div class="dv-help"><b>R</b>/<b>F</b> on your front sends armour / infantry there (again = <b>stack</b>, max 3). <b>Click a flag</b> to select it, then click <b>enemy land</b> to give it an objective, or an <b>enemy flag</b> to engage it — no troops are sent. Pick a plan and press <b>X</b>: one attack follows your objectives. <b>T</b> = whole army to a front. Right-click a flag = home.</div>`;
     box.onclick = (ev) => {
       const dv = ev.target.closest('[data-dv]');
       if (dv) {
@@ -696,8 +752,10 @@
         HUD.banner(`<img class="ico" src="${MP.Icons.url(type === 'arm' ? 'tank' : 'troops', '#ffd21f', 32)}"> Click your front line to send ${type === 'arm' ? 'an armoured' : 'an infantry'} division there · shift-click to send several`);
         MP.SFX.play('open'); HUD.renderDivs(true); return;
       }
+      const stb = ev.target.closest('[data-st]'); if (stb) { HUD.setStance(stb.dataset.st); return; }
       const b = ev.target.closest('[data-fa]'); if (!b || b.disabled) return;
       const a = b.dataset.fa;
+      if (a === 'exec') { HUD.executePlan(); HUD.renderDivs(true); return; }
       let r = null;
       if (a === 'train') r = MP.Div.trainAll(p);
       if (a === 'upgrade') r = MP.Div.upgrade(p);
