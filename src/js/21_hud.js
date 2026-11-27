@@ -54,6 +54,7 @@
     </div>
 
     <div class="hud-bc">
+      <div id="h-front" class="front-panel"></div>
       <div id="h-offers"></div>
       <div class="buildbar" id="h-build"></div>
       <div class="panel stats brk">
@@ -265,6 +266,7 @@
     if (k === ' ') { e.preventDefault(); MP.Game.setPaused(!MP.Game.paused); return; }
     if (S.opts.mode === 'watch') return;
     const up = k.toUpperCase();
+    if (up === 'T') { HUD.toggleFront(); return; }
     for (const t of C.BUILD_ORDER.concat(C.DEFENSE_ORDER)) if (C.BUILD[t].key === up) { HUD.setBuildMode(t); return; }
     for (const w of C.WEAPON_ORDER) if (C.WEAPON[w].key === up) { HUD.weaponClick(w); return; }
     if (k === '+' || k === '=') { HUD.ratio = Math.min(1, HUD.ratio + 0.05); HUD.syncRatio(); }
@@ -314,6 +316,24 @@
       if (all) MP.Weapons.launchAll(p, mode.w, H.wx, H.wy); else MP.Weapons.launch(p, mode.w, H.wx, H.wy);
       if (!e.shiftKey) HUD.clearMode();
       return;
+    }
+    // divisions: click one to select it, then click your land to move it (stack by placing it behind another)
+    if (p.divPlan && p.divs) {
+      let hit = null, hd = 22 * 22;
+      for (const d of p.divs) { if (d._sx == null) continue; const dd = (d._sx - H.sx) ** 2 + (d._sy - 14 - H.sy) ** 2; if (dd < hd) { hd = dd; hit = d; } }
+      const selD = p.divs.find((d) => d.sel);
+      if (hit) {
+        // clicking a stack cycles through the divisions in it
+        const stack = p.divs.filter((d) => d._sx === hit._sx && d._sy === hit._sy);
+        const cur = stack.findIndex((d) => d.sel);
+        for (const d of p.divs) d.sel = false;
+        const nxt = stack[(cur + 1) % stack.length];
+        if (cur === stack.length - 1 && stack.length === 1) { MP.SFX.play('close'); return; }
+        nxt.sel = true; MP.SFX.play('click');
+        HUD.toast(`${nxt.type === 'arm' ? 'Armoured' : 'Infantry'} division · ${nxt.gear} · ${U.fmtInt(nxt.size)}${nxt.trainedFull ? ' · trained' : ''} — click your land to move it`, 'info');
+        return;
+      }
+      if (selD && S.owner[H.t] === p.id) { MP.Div.moveTo(selD, H.wx, H.wy); selD.sel = false; MP.SFX.play('send'); return; }
     }
     // select own warship?
     const R = MP.Render;
@@ -450,6 +470,7 @@
       opts.push({ id: 'ally', label: 'Ally', icon: 'flag' });
       opts.push({ id: 'truce', label: 'Truce', icon: 'shield', dis: G.hasTruce(p.id, o) });
       opts.push({ id: 'target', label: p.targetId === o ? 'Untarget' : 'Target', icon: 'nuke', dis: !hasFriends });
+      opts.push({ id: 'front', label: p.divPlan && p.divPlan.enemy === o ? 'Stand down' : 'Front (T)', icon: 'tank', dis: !MP.War.bordersWith(p.id, o) });
       opts.push({ id: 'embargo', label: p.embargo.has(o) ? 'Lift' : 'Embargo', icon: 'coin' });
     }
     opts.push({ id: 'focus', label: 'Focus', icon: 'capital' });
@@ -501,6 +522,7 @@
       case 'askTroops': MP.Diplo.requestAid(p, n, 'troops'); break;
       case 'askCredits': MP.Diplo.requestAid(p, n, 'credits'); break;
       case 'target': MP.Diplo.setTarget(p, n); HUD.refresh(); break;
+      case 'front': HUD.toggleFront(o); break;
       case 'cede': HUD.confirm(`Demand that ${n.name} cede?`, `${Math.round(MP.Diplo.cedeOdds(p, n) * 100)}% chance it signs everything over to you. If it refuses, it declares independence, goes to war with you and courts your enemies. Each gift you send it adds 5%.`, () => MP.Diplo.requestCede(p, n)); break;
     }
   };
@@ -544,6 +566,76 @@
       <div class="ni-list"><span>Arsenal</span>${research.length ? research.join(' · ') : '<i class="dim">none known</i>'}</div>
       <div class="ni-list"><span>Allies</span>${allies.length ? allies.map((a) => MP.Flags.img(a.flag, 'flag sm') + ' ' + U.esc(a.name)).join(', ') : '<i class="dim">none</i>'}</div>
       <div class="ni-list"><span>At war with</span>${wars.length ? wars.slice(0, 8).map((a) => U.esc(a.name)).join(', ') : '<i class="dim">nobody</i>'}</div>`);
+  };
+
+  // ---------------- divisions / front planning (T) ----------------
+  HUD.toggleFront = function (forceEnemy) {
+    const S = G.S, p = G.player();
+    if (!S || !p || !p.alive || S.phase !== 'play') return;
+    const H = MP.Render.hover;
+    const o = forceEnemy || (H.t >= 0 ? S.owner[H.t] : 0);
+    if (p.divPlan && (!o || o === p.id || o === p.divPlan.enemy)) {
+      const e = S.nations[p.divPlan.enemy];
+      MP.Div.recall(p); MP.SFX.play('close');
+      HUD.toast(`Divisions stand down from the ${e ? e.name : ''} front`, 'info');
+      HUD.renderFront(true); return;
+    }
+    if (!o || o === p.id) { HUD.toast('Hover a neighbouring nation and press T to man that front', 'info'); return; }
+    const r = MP.Div.togglePlan(p, o);
+    const n = S.nations[o];
+    if (r === 'busy') { HUD.toast(`Your divisions are on the ${S.nations[p.divPlan.enemy].name} front — RECALL them first`, 'bad'); MP.SFX.play('error'); }
+    else if (r === 'nofront') { HUD.toast(G.isAllied(p.id, o) ? 'That nation is your ally' : 'You share no border with ' + n.name, 'bad'); MP.SFX.play('error'); }
+    else if (r === 'on') {
+      MP.SFX.play('attack');
+      MP.Game.wire('IMINT', `YOUR DIVISIONS TAKE UP POSITIONS FACING ${n.name}${p.divPlan.prepared ? '' : ' · UNDER FIRE, NO TIME TO PREPARE'}`, p.divPlan.prepared ? 'good' : 'bad');
+      MP.Game.notify('front.plan', { nation: n.name, text: p.divPlan.prepared ? `Divisions on the ${n.name} line. If they come, we are ready for them.` : `Divisions moving up under fire. No time to dig in properly.`, priority: 1 });
+    }
+    HUD.renderFront(true);
+  };
+  let frontSig = '';
+  HUD.renderFront = function (force) {
+    const S = G.S, p = G.player(), box = els['h-front'];
+    if (!box) return;
+    if (!S || !p || !p.alive || S.opts.mode === 'watch' || S.phase !== 'play') { box.innerHTML = ''; frontSig = ''; return; }
+    const divs = p.divs || [];
+    const plan = p.divPlan;
+    const arm = divs.filter((d) => d.type === 'arm').length, inf = divs.length - arm;
+    const untrained = divs.filter((d) => !d.trainedFull && !d.training).length;
+    const training = divs.filter((d) => d.training).length;
+    const total = divs.reduce((a, d) => a + d.size, 0);
+    const sig = [plan ? plan.enemy + ':' + plan.prepared : 0, divs.length, arm, untrained, training, p.divLevel || 0, Math.round(total / 500), Math.round(p.credits / 1000)].join('|');
+    if (!force && sig === frontSig) return;
+    frontSig = sig;
+    if (!plan) {
+      box.innerHTML = divs.length ? `<div class="fp-mini"><img class="ico" src="${MP.Icons.url('tank', '#ffd21f', 32)}"> ${divs.length} DIVISIONS · ${U.fmtK(total)} · <span class="dim">PRESS T ON A NEIGHBOUR TO MAN THAT FRONT</span></div>` : '';
+      return;
+    }
+    const e = S.nations[plan.enemy];
+    const tc = MP.Div.trainCost(p) * untrained, uc = MP.Div.upgradeCost(p), rc = MP.Div.raiseCost(p);
+    box.innerHTML = `<div class="fp panel brk">
+      <div class="fp-h"><span class="t">⚑ FRONT</span> ${MP.Flags.img(e.flag, 'flag xs')} <b>${U.esc(e.name)}</b>
+        <span class="dim">${divs.length} DIVISIONS · ${inf} INF · ${arm} ARM · ${U.fmtK(total)} TROOPS · LV ${p.divLevel || 0}</span>
+        ${plan.prepared ? '<span class="g">PREPARED +' + (G.has(p, 'ironLine') ? 25 : 15) + '%</span>' : '<span class="amber">UNDER FIRE</span>'}</div>
+      <div class="fp-b">
+        <button class="btn sm" data-fa="train" ${untrained ? '' : 'disabled'}>TRAIN ALL${untrained ? ' · ' + U.fmtK(tc) : training ? ' · ' + training + ' IN TRAINING' : ' · DONE'}</button>
+        <button class="btn sm" data-fa="upgrade">UPGRADE · ${U.fmtK(uc)}</button>
+        <button class="btn sm" data-fa="raise">+1 DIVISION · ${U.fmtK(rc)}</button>
+        <button class="btn sm" data-fa="spread">AUTO-SPREAD</button>
+        <button class="btn sm danger" data-fa="recall">RECALL</button>
+      </div>
+      <div class="fp-hint dim">Click a flag, then click your land to move it · place one behind another to stack (max 3) · T again stands down</div></div>`;
+    box.onclick = (ev) => {
+      const b = ev.target.closest('[data-fa]'); if (!b) return;
+      const a = b.dataset.fa;
+      let r = null;
+      if (a === 'train') r = MP.Div.trainAll(p);
+      if (a === 'upgrade') r = MP.Div.upgrade(p);
+      if (a === 'raise') r = MP.Div.raise(p);
+      if (a === 'spread') { MP.Div.spread(p, plan.enemy, divs.slice().sort((x, y) => (y.type === 'arm') - (x.type === 'arm')), { stack: divs.length > 8 }); MP.SFX.play('send'); }
+      if (a === 'recall') { HUD.toggleFront(plan.enemy); return; }
+      if (r) { if (r.ok) { MP.SFX.play('upgrade'); HUD.toast(a === 'train' ? `Training ${r.count} divisions` : a === 'upgrade' ? `Divisions upgraded to level ${p.divLevel}` : 'New division raised', 'good'); } else { MP.SFX.play('error'); HUD.toast(r.reason, 'bad'); } }
+      HUD.renderFront(true);
+    };
   };
 
   // ---------------- offers / council / directives ----------------
@@ -746,6 +838,12 @@
     return `<svg class="ico" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.6" fill="none" stroke="${col}" stroke-width="1.3"/><line x1="8" y1="8" x2="8" y2="2.6" stroke="${col}" stroke-width="1.3"/><line x1="8" y1="8" x2="${x.toFixed(2)}" y2="${y.toFixed(2)}" stroke="#ffd21f" stroke-width="1.1"/></svg>`;
   }
 
+  // DOM writes only when the value actually changed: no style/layout work for identical refreshes,
+  // and buttons inside the panels aren't rebuilt under the cursor.
+  function setT(el, v) { if (el && el._mpT !== v) { el._mpT = v; el._mpH = undefined; el.textContent = v; } }
+  function setH(el, v) { if (el && el._mpH !== v) { el._mpH = v; el._mpT = undefined; el.innerHTML = v; } }
+  HUD.setT = setT; HUD.setH = setH;
+
   HUD.frame = function (dt) {
     if (!MP.Game.running || !G.S) return;
     refreshT -= dt;
@@ -758,7 +856,8 @@
     });
     if (S.council.active) { const b = document.getElementById('cc-bar'); if (b) b.style.width = (100 * Math.max(0, S.council.active.closes - S.t) / S.council.active.total) + '%'; const t = document.getElementById('cc-t'); if (t) t.textContent = U.fmtTime(S.council.active.closes - S.t); }
     if (refreshT > 0) return;
-    refreshT = 0.15;
+    const q = MP.Render.quality;
+    refreshT = q === 'low' ? 0.3 : q === 'balanced' ? 0.2 : 0.15;
     HUD.refresh();
   };
 
@@ -766,21 +865,21 @@
     const S = G.S, p = G.player(), Game = MP.Game;
     // status
     const d = S.defcon;
-    els['h-defcon'].textContent = 'DEFCON ' + d;
+    setT(els['h-defcon'], 'DEFCON ' + d);
     els['h-defcon'].className = 'defcon d' + d;
     const months = Math.floor(S.t / C.MONTH_SECONDS);
-    els['h-date'].textContent = U.MONTHS[months % 12] + ' ' + (C.START_YEAR + Math.floor(months / 12));
-    els['h-match'].textContent = S.phase === 'spawn' ? U.fmtTime(S.matchSeconds) : U.fmtTime(Game.matchLeft());
+    setT(els['h-date'], U.MONTHS[months % 12] + ' ' + (C.START_YEAR + Math.floor(months / 12)));
+    setT(els['h-match'], S.phase === 'spawn' ? U.fmtTime(S.matchSeconds) : U.fmtTime(Game.matchLeft()));
     const alive = G.alive().length;
-    els['h-alive'].textContent = alive;
-    els['h-clock'].textContent = U.fmtTime(S.clock);
+    setT(els['h-alive'], alive);
+    setT(els['h-clock'], U.fmtTime(S.clock));
     els['h-clock'].className = S.clock < 120 ? 'red' : S.clock < 300 ? 'amber' : '';
-    els['h-clockface'].innerHTML = clockFace(S.clock);
-    if (S.phase === 'spawn') { els['h-peace'].textContent = U.fmtTime(S.spawnLeft); els['h-peace-wrap'].title = 'Choose your spawn'; }
-    else if (S.alienId && !S.alienLanded) { els['h-peace'].textContent = 'LANDFALL ' + U.fmtTime(S.alienLeft != null ? S.alienLeft : S.alienGrace); els['h-peace-wrap'].title = 'The Void Armada lands when this reaches zero'; els['h-peace-ico'].src = MP.Icons.url('orbit', '#7dff5a', 32); }
-    else if (S.defcon === 5 && S.opts.nukes !== false) { els['h-peace'].textContent = U.fmtTime(Game.peaceLeft()); els['h-peace-wrap'].title = 'Peace timer — weapons unlock at DEFCON 4'; }
-    else if (S.opts.council) { els['h-peace'].textContent = S.council.active ? 'VOTE' : U.fmtTime(S.council.next); els['h-peace-wrap'].title = 'Next Global Council session'; els['h-peace-ico'].src = MP.Icons.url('capital', '#ffd21f', 32); }
-    else els['h-peace'].textContent = '—';
+    setH(els['h-clockface'], clockFace(S.clock));
+    if (S.phase === 'spawn') { setT(els['h-peace'], U.fmtTime(S.spawnLeft)); els['h-peace-wrap'].title = 'Choose your spawn'; }
+    else if (S.alienId && !S.alienLanded) { setT(els['h-peace'], 'LANDFALL ' + U.fmtTime(S.alienLeft != null ? S.alienLeft : S.alienGrace)); els['h-peace-wrap'].title = 'The Void Armada lands when this reaches zero'; els['h-peace-ico'].src = MP.Icons.url('orbit', '#7dff5a', 32); }
+    else if (S.defcon === 5 && S.opts.nukes !== false) { setT(els['h-peace'], U.fmtTime(Game.peaceLeft())); els['h-peace-wrap'].title = 'Peace timer — weapons unlock at DEFCON 4'; }
+    else if (S.opts.council) { setT(els['h-peace'], S.council.active ? 'VOTE' : U.fmtTime(S.council.next)); els['h-peace-wrap'].title = 'Next Global Council session'; els['h-peace-ico'].src = MP.Icons.url('capital', '#ffd21f', 32); }
+    else setT(els['h-peace'], '—');
     // spawn banner
     const pupN = S.puppetId ? S.nations[S.puppetId] : null;
     if (S.phase === 'spawn' && p && !HUD.mode) {
@@ -793,7 +892,7 @@
     const pct = p ? 100 * p.tiles / S.landTotal : 0;
     const bloc = (S.blocSize || 1) > 1 ? S.blocPct || 0 : pct;
     els['h-landbar'].style.width = U.clamp(bloc / S.winPct * 100, 0, 100) + '%';
-    els['h-landpct'].textContent = (S.blocSize || 1) > 1 ? U.fmtPct(pct) + ' · ⛓' + U.fmtPct(bloc) : U.fmtPct(pct);
+    setT(els['h-landpct'], (S.blocSize || 1) > 1 ? U.fmtPct(pct) + ' · ⛓' + U.fmtPct(bloc) : U.fmtPct(pct));
     els['h-landpct'].title = (S.blocSize || 1) > 1 ? `You hold ${U.fmtPct(pct)}; your alliance holds ${U.fmtPct(bloc)}. An alliance must take the whole world; any other bloc reaching ${S.winPct}% ends the match.` : `First to ${S.winPct}% of the world wins.`;
     root.querySelector('.ms.m10').style.left = (10 / S.winPct * 100) + '%';
     root.querySelector('.ms.m25').style.left = (25 / S.winPct * 100) + '%';
@@ -801,23 +900,23 @@
     const H = MP.Render.hover;
     if (H.t >= 0) {
       const [lon, lat] = World.toLonLat(H.x + 0.5, H.y + 0.5);
-      els['h-coord'].textContent = `${Math.abs(lat).toFixed(2)}°${lat >= 0 ? 'N' : 'S'} ${Math.abs(lon).toFixed(2)}°${lon >= 0 ? 'E' : 'W'}`;
+      setT(els['h-coord'], `${Math.abs(lat).toFixed(2)}°${lat >= 0 ? 'N' : 'S'} ${Math.abs(lon).toFixed(2)}°${lon >= 0 ? 'E' : 'W'}`);
       if (World.land[H.t]) {
-        els['h-terrain'].textContent = World.terrainName(H.t);
+        setT(els['h-terrain'], World.terrainName(H.t));
         const dif = World.difficulty(H.t);
-        els['h-pips'].innerHTML = [0, 1, 2].map((i) => `<i class="${i < dif ? 'on' : ''}"></i>`).join('');
-      } else { els['h-terrain'].textContent = World.ocean[H.t] ? 'SEA' : 'LAKE'; els['h-pips'].innerHTML = ''; }
+        setH(els['h-pips'], [0, 1, 2].map((i) => `<i class="${i < dif ? 'on' : ''}"></i>`).join(''));
+      } else { setT(els['h-terrain'], World.ocean[H.t] ? 'SEA' : 'LAKE'); setH(els['h-pips'], ''); }
       const o = S.owner[H.t];
       if (o) {
         const n = S.nations[o];
         const soft = G.isSoft(H.t) || MP.Weapons.inFallout(H.x, H.y);
         const atWar = p && n.wars.has(p.id);
         const allies = Array.from(n.allies).map((a) => S.nations[a]).filter((x) => x && x.alive).slice(0, 6);
-        els['h-ro-nation'].innerHTML = `${MP.Flags.img(n.flag, 'flag sm')} <b style="color:${U.rgb(U.mix(n.color, [255, 255, 255], 0.35))}">${U.esc(n.name)}</b>` +
+        setH(els['h-ro-nation'], `${MP.Flags.img(n.flag, 'flag sm')} <b style="color:${U.rgb(U.mix(n.color, [255, 255, 255], 0.35))}">${U.esc(n.name)}</b>` +
           (atWar ? ' <span class="red">⊕</span>' : '') + ` <span class="dim">≈${U.fmtK(n.troops)}</span> <span class="dim">▣ ${U.fmtK(n.tiles)}</span> ` +
           (soft ? '<span class="soft">SOFT ×1</span>' : `<span class="dug">DUG IN ×${C.DUG_IN_MULT}</span>`) +
-          (allies.length ? `<div class="ro-allies">${allies.map((a) => MP.Flags.img(a.flag, 'flag xs')).join('')}</div>` : '');
-      } else els['h-ro-nation'].innerHTML = World.land[H.t] ? '<span class="dim">UNCLAIMED LAND</span>' : '';
+          (allies.length ? `<div class="ro-allies">${allies.map((a) => MP.Flags.img(a.flag, 'flag xs')).join('')}</div>` : ''));
+      } else setH(els['h-ro-nation'], World.land[H.t] ? '<span class="dim">UNCLAIMED LAND</span>' : '');
     }
     // leaderboard
     const al = G.alive().sort((a, b) => b.tiles - a.tiles);
@@ -827,21 +926,21 @@
     const row = (n, i) => `<div class="lbr ${n === p ? 'me' : ''} ${n.partner ? 'partner' : ''}"><span>${n === p ? '›' : ''} ${i + 1}</span><span class="nm">${MP.Flags.img(n.flag, 'flag xs')} ${U.esc(n.name)}${n.puppet ? ' <i>PUPPET</i>' : n.isPlayer || n.partner ? ' <i>L' + (MP.Menu ? MP.Menu.level() : 1) + '</i>' : ''}</span><span>${U.fmtPct(100 * n.tiles / S.landTotal)}</span><span>${U.fmtK(n.troops)}</span></div>`;
     top.forEach((n, i) => { rows += row(n, i); });
     if (pRank >= 8) rows += row(p, pRank);
-    els['h-lb-rows'].innerHTML = rows;
+    setH(els['h-lb-rows'], rows);
     // attacks
     if (p) {
       const mine = S.attacks.filter((a) => a.from === p.id && !a.done);
-      els['h-att-count'].textContent = mine.length + ' OUT';
-      els['h-att-rows'].innerHTML = mine.map((a) => {
+      let attHtml = mine.map((a) => {
         const tn = a.to ? S.nations[a.to] : null;
         return `<div class="atr"><span class="nm">${tn ? MP.Flags.img(tn.flag, 'flag xs') + ' ' + U.esc(tn.name) : '<img class="ico" src="' + MP.Icons.url('flag', '#8d8670', 32) + '"> UNCLAIMED LAND'}</span><span class="tr">${U.fmtK(a.troops)}</span><button class="btn sm" data-recall="${a.id}">RECALL</button></div>`;
       }).join('') + S.ships.filter((s) => s.owner === p.id && s.kind === 'transport').map((s) => `<div class="atr"><span class="nm">⛴ TRANSPORT → ${s.target ? U.esc(S.nations[s.target].name) : 'COAST'}</span><span class="tr">${U.fmtK(s.troops)}</span><span></span></div>`).join('');
       const incoming = S.attacks.filter((a) => a.to === p.id && !a.done);
-      els['h-att-rows'].innerHTML += incoming.map((a) => {
+      attHtml += incoming.map((a) => {
         const an = S.nations[a.from];
         return `<div class="atr in"><span class="nm">▼ ${MP.Flags.img(an.flag, 'flag xs')} ${U.esc(an.name)}</span><span class="tr">${U.fmtK(a.troops)}${a.def > 0 ? ' <i class="def">⛨' + U.fmtK(a.def) + '</i>' : ''}</span><button class="btn sm defend" data-defend="${a.id}" title="Commit ${Math.round(HUD.ratio * 100)}% of your troops to hold this front">DEFEND</button></div>`;
       }).join('');
-      els['h-att-count'].textContent = mine.length + ' OUT' + (incoming.length ? ' · ' + incoming.length + ' IN' : '');
+      setH(els['h-att-rows'], attHtml);
+      setT(els['h-att-count'], mine.length + ' OUT' + (incoming.length ? ' · ' + incoming.length + ' IN' : ''));
       els['h-att-rows'].onclick = (e) => {
         const b = e.target.closest('[data-recall]');
         if (b) { const at = S.attacks.find((a) => a.id === Number(b.dataset.recall)); if (at) { MP.War.recall(at); MP.Game.notify('attack.recalled', {}); } return; }
@@ -855,30 +954,31 @@
       // allied target chip
       const tgt = p.targetId && S.nations[p.targetId];
       const chip = document.getElementById('h-target');
-      if (tgt && tgt.alive) { chip.style.display = ''; chip.innerHTML = `<span class="t">⌖ ALLIED TARGET</span> ${MP.Flags.img(tgt.flag, 'flag xs')} <b>${U.esc(tgt.name)}</b> <button class="btn sm" data-untarget>✕</button>`; chip.onclick = (e) => { if (e.target.closest('[data-untarget]')) MP.Diplo.setTarget(p, tgt); }; }
+      if (tgt && tgt.alive) { chip.style.display = ''; setH(chip, `<span class="t">⌖ ALLIED TARGET</span> ${MP.Flags.img(tgt.flag, 'flag xs')} <b>${U.esc(tgt.name)}</b> <button class="btn sm" data-untarget>✕</button>`); chip.onclick = (e) => { if (e.target.closest('[data-untarget]')) MP.Diplo.setTarget(p, tgt); }; }
       else { chip.style.display = 'none'; if (p.targetId && (!tgt || !tgt.alive)) p.targetId = 0; }
     } else document.getElementById('h-attacks').style.display = 'none';
     // council effects
     const ef = S.council.effects;
     const efEl = els['h-effects'];
-    if (ef.length) { efEl.style.display = ''; efEl.innerHTML = '<div class="ph"><span class="t">COUNCIL MANDATES</span></div>' + ef.map((e) => `<div class="efr"><span>${U.esc(e.name)}${e.target ? ' · ' + U.esc(S.nations[e.target].name) : ''}</span><span>${U.fmtTime(e.until - S.t)}</span></div>`).join(''); }
+    if (ef.length) { efEl.style.display = ''; setH(efEl, '<div class="ph"><span class="t">COUNCIL MANDATES</span></div>' + ef.map((e) => `<div class="efr"><span>${U.esc(e.name)}${e.target ? ' · ' + U.esc(S.nations[e.target].name) : ''}</span><span>${U.fmtTime(e.until - S.t)}</span></div>`).join('')); }
     else efEl.style.display = 'none';
     if (!p) return;
     // stats
-    els['h-troops'].textContent = U.fmtK(p.troops);
-    els['h-cap'].textContent = U.fmtK(p.cap);
-    els['h-grow'].textContent = (p.growth >= 0 ? '+' : '') + U.fmtK(p.growth) + '/s';
+    setT(els['h-troops'], U.fmtK(p.troops));
+    setT(els['h-cap'], U.fmtK(p.cap));
+    setT(els['h-grow'], (p.growth >= 0 ? '+' : '') + U.fmtK(p.growth) + '/s');
     els['h-grow'].className = p.growth >= 0 ? 'pos' : 'neg';
     els['h-troopbar'].style.width = U.clamp(100 * p.troops / p.cap, 0, 100) + '%';
-    els['h-send'].textContent = U.fmtK(p.troops * HUD.ratio);
-    els['h-credits'].textContent = U.fmtK(p.credits);
-    els['h-income'].textContent = '+' + U.fmtK(p.incomeAvg) + '/s';
-    els['h-tiles'].textContent = U.fmtInt(p.tiles);
-    els['h-uranium'].textContent = U.fmtInt(p.uranium);
+    setT(els['h-send'], U.fmtK(p.troops * HUD.ratio));
+    setT(els['h-credits'], U.fmtK(p.credits));
+    setT(els['h-income'], '+' + U.fmtK(p.incomeAvg) + '/s');
+    setT(els['h-tiles'], U.fmtInt(p.tiles));
+    setT(els['h-uranium'], U.fmtInt(p.uranium));
     els['h-uranium'].classList.toggle('capped', !!p.uCapped && p.uranium >= C.URANIUM_CAP_NO_DEPOSIT - 0.5);
     els['h-ubar'].style.width = (p.uCapped ? U.clamp(100 * p.uranium / C.URANIUM_CAP_NO_DEPOSIT, 0, 100) : 100) + '%';
     els['h-ubar'].parentElement.title = p.uCapped ? 'No enrichment plant: uranium capped at 200' : `+${(p.uRate || 0).toFixed(1)} U/s`;
     HUD.syncSlots();
+    HUD.renderFront();
   };
 
   // ---------------- end screen ----------------

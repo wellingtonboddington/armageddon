@@ -26,15 +26,29 @@
 
   // ---------------- transports ----------------
   // launch a troop transport from our nearest coast to a coastal target tile
+  // how much enemy-held land surrounds a coast tile (0–25, sampled 5×5 at stride 2 over a 9×9 box)
+  Naval.landMass = function (u, selfId) {
+    const S = G.S, w = World.W, x = u % w, y = (u / w) | 0;
+    let c = 0;
+    for (let dy = -4; dy <= 4; dy += 2) for (let dx = -4; dx <= 4; dx += 2) {
+      const xx = x + dx, yy = y + dy;
+      if (xx < 0 || yy < 0 || xx >= w || yy >= World.H) continue;
+      const t = xx + yy * w;
+      if (World.land[t] && S.owner[t] !== selfId) c++;
+    }
+    return c;
+  };
+
   Naval.launchTransport = function (n, targetTile, troops) {
     const S = G.S, w = World.W;
     const tx = targetTile % w, ty = (targetTile / w) | 0;
     // landing tile: nearest coast tile to the click that is not ours
+    // (prefers shore with real land behind it, so a landing doesn't strand itself on a one-tile islet)
     let land = -1, bd = 1e9;
     for (let dy = -12; dy <= 12; dy++) for (let dx = -12; dx <= 12; dx++) {
       const u = targetTile + dx + dy * w;
       if (u < 0 || u >= World.N || !World.coast[u] || S.owner[u] === n.id) continue;
-      const d = dx * dx + dy * dy; if (d < bd) { bd = d; land = u; }
+      const d = dx * dx + dy * dy - 10 * Naval.landMass(u, n.id); if (d < bd) { bd = d; land = u; }
     }
     if (land < 0) return { ok: false, reason: 'No coast to land on there' };
     const lx = land % w, ly = (land / w) | 0;

@@ -87,6 +87,12 @@
       c.beginPath(); c.arc(0.5, 0.5, 0.08, 0, 7); c.fill();
       for (let k = 0; k < 3; k++) { const a = -Math.PI / 2 + k * 2 * Math.PI / 3; c.beginPath(); c.moveTo(0.5 + Math.cos(a - 0.5) * 0.14, 0.5 + Math.sin(a - 0.5) * 0.14); c.arc(0.5, 0.5, 0.42, a - 0.5, a + 0.5); c.arc(0.5, 0.5, 0.14, a + 0.5, a - 0.5, true); c.closePath(); c.fill(); }
     },
+    tank(c) {
+      c.fillRect(0.08, 0.58, 0.84, 0.2); c.fillRect(0.22, 0.4, 0.44, 0.2); c.fillRect(0.6, 0.46, 0.34, 0.07);
+      c.fillStyle = '#000'; for (const x of [0.2, 0.4, 0.6, 0.8]) { c.beginPath(); c.arc(x, 0.72, 0.05, 0, 7); c.fill(); } c.fillStyle = '#fff';
+    },
+    gun(c) { c.beginPath(); c.arc(0.32, 0.72, 0.16, 0, 7); c.fill(); c.save(); c.translate(0.32, 0.6); c.rotate(-0.6); c.fillRect(0, -0.05, 0.62, 0.1); c.restore(); c.fillRect(0.08, 0.82, 0.6, 0.06); },
+    drone(c) { c.fillRect(0.38, 0.42, 0.24, 0.16); c.lineWidth = 0.07; c.beginPath(); c.moveTo(0.18, 0.28); c.lineTo(0.82, 0.72); c.moveTo(0.82, 0.28); c.lineTo(0.18, 0.72); c.stroke(); for (const [x, y] of [[0.18, 0.28], [0.82, 0.28], [0.18, 0.72], [0.82, 0.72]]) { c.beginPath(); c.arc(x, y, 0.1, 0, 7); c.stroke(); } },
     troops(c) { c.beginPath(); c.arc(0.5, 0.42, 0.34, Math.PI, 0); c.lineTo(0.9, 0.56); c.lineTo(0.1, 0.56); c.closePath(); c.fill(); c.fillRect(0.3, 0.6, 0.4, 0.08); },
     flag(c) { c.fillRect(0.2, 0.1, 0.07, 0.8); c.beginPath(); c.moveTo(0.27, 0.12); c.lineTo(0.84, 0.28); c.lineTo(0.27, 0.48); c.closePath(); c.fill(); },
     coin(c) { c.beginPath(); c.ellipse(0.5, 0.36, 0.34, 0.14, 0, 0, 7); c.fill(); c.fillRect(0.16, 0.36, 0.68, 0.16); c.beginPath(); c.ellipse(0.5, 0.52, 0.34, 0.14, 0, 0, 7); c.fill(); c.fillRect(0.16, 0.52, 0.68, 0.16); c.beginPath(); c.ellipse(0.5, 0.68, 0.34, 0.14, 0, 0, 7); c.fill(); },

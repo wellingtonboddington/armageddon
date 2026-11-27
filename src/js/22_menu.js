@@ -859,7 +859,8 @@
       <h4>DEFENCES</h4><p>Each defence level adds one more interception shot — nothing else. Each type covers specific warheads: <b>SAM</b> ${Object.entries(def('sam').vs).map(([k, v]) => k + ' ' + Math.round(v * 100) + '%').join(', ')} · <b>ABM</b> ${Object.entries(def('abm').vs).map(([k, v]) => k + ' ' + Math.round(v * 100) + '%').join(', ')} · <b>Laser</b> ${Object.entries(def('laser').vs).map(([k, v]) => k + ' ' + Math.round(v * 100) + '%').join(', ')} · <b>Aegis Net</b> ${Object.entries(def('aegis').vs).map(([k, v]) => k + ' ' + Math.round(v * 100) + '%').join(', ')}. <b>Radar</b> sees launches early; the earlier the warning, the better every interception roll (×${C.WARN.minF} with no warning up to ×${C.WARN.maxF}).</p>
       <h4>DIPLOMACY</h4><p>Alliances share no friendly fire; up to ${C.ALLIANCE_MAX} allies — or bring a party of ${C.PARTY_MAX} bots and forfeit alliances. Bots judge your offers by your position: strength, borders, shared enemies, betrayals. Truces last 3:00. Betrayal is rare but real. Embargoes stop convoys and trade ships.</p>
       <h4>NEW IN MIDNIGHT PROTOCOL</h4><p><b>Doctrines & field directives</b> · <b>Supply lines</b> · <b>Global Council</b> votes every ${C.COUNCIL_INTERVAL / 60} minutes · <b>EMP strikes</b> · <b>Weather fronts</b> · <b>Pause, 1–4× speed and save/resume</b>.</p>
-      <h4>KEYS</h4><p>1–8 build · R T Y U J defences · Z N H I M O E weapons · L launch-all · Space pause · F find capital · WASD/arrows pan · wheel zoom · Esc cancel/settings · +/− attack ratio</p></div>`);
+      <h4>DIVISIONS</h4><p>Your army fights as divisions — infantry (with artillery or drones) and armour (tanks or motorised; a few hundred men that push like thousands, 30% faster, +20% in breakthroughs). They draw on your troop pool, need supply from factories and logistics hubs in range, and change the fight wherever they stand — the gaps between them are real. They stay hidden until you press <b>T</b>, attack or defend; when you are invaded they rush to the line. Press <b>T</b> on a neighbour to man that front: train (×2 once fully trained), upgrade, raise more, or move them by clicking a flag and then your land. A division right behind another stacks (max 3): the lead pushes 10% faster, digs in 33% faster, and the enemy pays 25% more and gains ground 25% slower against it. Divisions already on the line before an enemy attacks defend 15% better. More territory means more divisions; credits make them bigger. <b>RECALL</b> or T again stands them down — a manned front leaves your other borders bare.</p>
+      <h4>KEYS</h4><p>T man / stand down a front · 1–8 build · R G Y U J defences · Z N H I M O E weapons · L launch-all · Space pause · F find capital · WASD/arrows pan · wheel zoom · Esc cancel/settings · +/− attack ratio</p></div>`);
   };
 
   Menu.openSettings = function (inMatch) {
@@ -880,6 +881,7 @@
         <button class="btn" id="st-vtest" type="button">TEST VOICE</button>
         <label class="ck"><input type="checkbox" id="st-tut" ${S.get('tutorial', true) ? 'checked' : ''}> TUTORIAL BRIEFINGS</label>
         <label class="ck"><input type="checkbox" id="st-fs" ${S.get('fullscreen', true) ? 'checked' : ''}> AUTO FULLSCREEN</label>
+        <label>GRAPHICS <select id="st-gfx">${[['auto', 'AUTO (ADAPTS TO YOUR MACHINE)'], ['high', 'HIGH'], ['balanced', 'BALANCED'], ['low', 'LOW (WEAK LAPTOPS)']].map(([v, l]) => `<option value="${v}" ${S.get('gfx', 'auto') === v ? 'selected' : ''}>${l}</option>`).join('')}</select><span class="dim small">Now: ${(MP.Render.quality || 'high').toUpperCase()} · nothing is removed, only resolution and refresh rates change</span></label>
       </div>
       ${inMatch ? '' : '<div class="row-btns"><button class="btn danger" data-a="reset">RESET PROGRESS</button></div>'}`,
     (box, close) => {
@@ -899,6 +901,7 @@
       vstat();
       box.querySelector('#st-vtest').onclick = () => { MP.audio.unlock(); MP.Advisor && MP.Advisor.setVoiceEnabled(true); const cb = box.querySelector('#st-voice'); if (cb) cb.checked = true; MP.Advisor && MP.Advisor.say('Voice check. Channel is clear.', { priority: 2 }); setTimeout(vstat, 1200); setTimeout(vstat, 4000); };
       box.querySelector('#st-fs').onchange = (e) => { S.set('fullscreen', e.target.checked); if (e.target.checked) MP.enterFullscreen(); };
+      box.querySelector('#st-gfx').onchange = (e) => { S.set('gfx', e.target.value); MP.Render.applyGfxSetting(); };
       box.addEventListener('click', (e) => {
         const b = e.target.closest('[data-a]'); if (!b) return;
         const a = b.dataset.a;

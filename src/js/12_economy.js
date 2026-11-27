@@ -23,6 +23,8 @@
         g = 1000 * C.GROW_K * Math.pow(Math.max(0, T), C.GROW_P) * (1 - n.troops / n.cap) + C.GROW_FLOOR;
         g *= G.mod(n, 'growth') * (n.supplyGrowth == null ? 1 : n.supplyGrowth) * (1 - 0.5 * (n.falloutFrac || 0));
         if (n.ai) g *= MP.CONFIG.DIFFICULTY[n.difficulty].eff;
+        // the Void Armada is fed from orbit: it can be bled, but never into a death spiral
+        if (n.isAlien) g = Math.max(g, n.cap * 0.002 * (1 - n.troops / n.cap));
         n.troops = Math.min(n.cap, n.troops + g * dt);
       } else {
         g = -(n.troops - n.cap) * 0.02;

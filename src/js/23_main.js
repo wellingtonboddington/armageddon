@@ -25,6 +25,7 @@
       bootLog('> CHARTING SEA LANES · RAISING TERRAIN');
       await frame();
       MP.HUD.init();
+      MP.Render.applyGfxSetting();
       document.getElementById('hud').style.display = 'none';
       bootLog('> RASTERISING FLAGS · ' + MP.Flags.list.length + ' NATIONS ON FILE');
       await frame();
@@ -66,6 +67,7 @@
 
   let last = performance.now(), acc = 0;
   function loop(now) {
+    const work0 = performance.now();
     let dt = (now - last) / 1000;
     last = now;
     if (dt > 0.25) dt = 0.25;
@@ -91,6 +93,7 @@
       console.error('[loop]', e);
       if (!loop._errShown) { loop._errShown = true; MP.HUD && MP.HUD.toast('Internal error: ' + e.message, 'bad'); setTimeout(() => { loop._errShown = false; }, 5000); }
     }
+    if (MP.Render.reportFrame && MP.Game.running) MP.Render.reportFrame(performance.now() - work0, dt);
     // the advisor runs isolated: a fault there never stops the game (and vice versa)
     try { if (MP.Advisor && MP.Advisor.update) MP.Advisor.update(dt); } catch (e) { if (!loop._advErr) { loop._advErr = true; console.error('[advisor]', e); } }
     requestAnimationFrame(loop);

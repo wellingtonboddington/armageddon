@@ -65,6 +65,8 @@ MIDNIGHT PROTOCOL is an original game. Its genre (real-time territory grand stra
 | Warning factor | ×0.80 (no radar) → ×1.25 (detected at launch); chances capped at 95 % |
 | Fallout | 60 s, radius ×1.25, halves troop growth on covered land and keeps it soft |
 | Council | session every 4:00, 20 s vote; mandates last 2:00 |
+| Divisions | count `2 + √tiles/10` (max 24, +skills/raised); 34 % armour; infantry ~1.5k + 2 % of troop cap, armour ¼ of that but ×10 punch; artillery +35 %, drones +25 %; trained ×2; supply 70 tiles from factories, 300 from hubs, 40 from the capital; unsupplied ×0.6 |
+| Division effects | tile cost ×(1+def/12k)/(1+atk/10k), clamped 0.4–3.2; armour speed ×1.3 per division, ×1.2 more in a breakthrough; stacks up to 3: lead digs in 33 % faster, +10 % speed, attackers pay +25 %, ground lost 25 % slower; prepared front +15 % |
 | Win | 80 % of the world's land, last nation/team standing, every survivor allied with you, or the largest nation when time runs out |
 
 ## Architecture
@@ -76,13 +78,14 @@ MIDNIGHT PROTOCOL is an original game. Its genre (real-time territory grand stra
 | `11_state` | match state, tile ownership (`Uint8Array` owners, `Float32Array` soft timers, FIFO dig-in queue), border sets, structures, capitals |
 | `12_economy` | troops, income, uranium, construction, routes/roads, convoys |
 | `13_combat` | spawning, frontier-queue attacks, forts, supply, pocket detection & annexation |
+| `13b_divisions` | divisions: spawn/refill from the troop pool, supply, training, front planning (`T`), stacking, per-tile combat modifiers, AI mobilisation |
 | `14_naval` | trade ships, warships, transports |
 | `15_weapons` | research, silos, missiles, radar detection, interception, detonations, fallout, EMP |
 | `16_diplo` | alliances, truces, embargoes, betrayal, Global Council |
 | `17_weather` | storm fronts |
 | `18_ai` | per-nation staggered AI (≈1 decision/s each) |
 | `19_game` | phases, DEFCON/clock, milestones, endings, save/resume (IndexedDB) |
-| `20_render` | cached terrain + incremental territory layer (dirty-chunk `putImageData`), overlays, labels, FX, minimap |
+| `20_render` | cached terrain + incremental territory layer (dirty-chunk `putImageData`), cached fresh-land hatching, overlays, labels, division flags (clustered on screen), FX, minimap; adaptive quality (AUTO/HIGH/BALANCED/LOW) |
 | `21_hud` / `22_menu` | interface |
 | `05_sfx` | procedural audio |
 | `advisor/` | VESPER |

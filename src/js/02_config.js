@@ -72,6 +72,23 @@
     MILESTONES: [10, 25, 50],
   });
 
+  // ---------- divisions (front-line formations shown as flags) ----------
+  C.DIV = {
+    baseCount: 2, perSqrtTiles: 1 / 10, maxCount: 24,   // more territory → more divisions
+    armorShare: 0.34,
+    infSize: 1500, infCapShare: 0.02,                    // infantry size = 1500 + 2% of troop cap (× upgrades)
+    armorSize: 0.25, armorPower: 10,                     // armour: ~200–1,000 troops that push like 2,000–10,000
+    infPower: 1.0, gearBonus: { artillery: 0.35, drones: 0.25 },
+    radius: 14, armorRadius: 18,
+    moveInf: 3.2, moveArm: 6.5,                          // tiles per second
+    refill: 0.006,                                       // share of max size per second from the pool
+    trainCost: 2500, trainTime: 25, trainedMul: 2,
+    upgradeCost: 6000, upgradeMax: 6, raiseCost: 10000,
+    supplyFactory: 70, supplyHub: 300, unsupplied: 0.6,
+    stackRange: 5, stackMax: 3,
+    preparedBonus: 1.15, spawnEvery: 8, visibleFor: 6,
+  };
+
   // ---------- buildings ----------
   // cost(n) = base + a·n^p (n = total levels already owned) — fit to observed cost ladders
   C.BUILD = {
@@ -84,7 +101,7 @@
     warship: { key: '7', name: 'Warship', icon: 'warship', base: 6000, a: 6000, p: 1.0, time: 8, u: 0, unit: true },
     silo:    { key: '8', name: 'Missile Silo', icon: 'silo', base: 20000, a: 12000, p: 1.2, time: 10, u: 100 },
     radar:   { key: 'R', name: 'Radar', icon: 'radar', base: 12000, a: 7000, p: 1.2, time: 6, u: 0, defense: true },
-    sam:     { key: 'T', name: 'SAM Site', icon: 'sam', base: 15000, a: 9000, p: 1.2, time: 6, u: 50, defense: true },
+    sam:     { key: 'G', name: 'SAM Site', icon: 'sam', base: 15000, a: 9000, p: 1.2, time: 6, u: 50, defense: true },
     abm:     { key: 'Y', name: 'ABM Site', icon: 'abm', base: 30000, a: 18000, p: 1.2, time: 8, u: 150, defense: true },
     laser:   { key: 'U', name: 'Laser Array', icon: 'laser', base: 45000, a: 25000, p: 1.2, time: 10, u: 250, defense: true },
     aegis:   { key: 'J', name: 'Aegis Net', icon: 'aegis', base: 40000, a: 22000, p: 1.2, time: 10, u: 200, defense: true },
@@ -167,7 +184,7 @@
   // branch order = tree columns; `req` = skill that must be owned first
   C.SKILL_BRANCHES = [
     { id: 'war', name: 'WARFARE' }, { id: 'def', name: 'DEFENCE' }, { id: 'log', name: 'LOGISTICS' },
-    { id: 'eco', name: 'ECONOMY' }, { id: 'state', name: 'STATECRAFT' },
+    { id: 'eco', name: 'ECONOMY' }, { id: 'state', name: 'STATECRAFT' }, { id: 'div', name: 'DIVISIONS' },
   ];
   C.SKILLS = [
     { id: 'shock', branch: 'war', cost: 1, name: 'Shock Assault', desc: 'Attacks cost 6% fewer troops.', mods: { attackCost: 0.94 } },
@@ -190,6 +207,27 @@
     { id: 'tongue', branch: 'state', cost: 1, name: 'Silver Tongue', desc: 'Alliances, truces and aid requests are 12% more likely to be accepted.', mods: { diplomacy: 1 } },
     { id: 'patron', branch: 'state', cost: 2, req: 'tongue', name: 'Patronage', desc: 'Your puppet-state is 10% more likely to accept a CEDE.', mods: { cedeBonus: 1 } },
     { id: 'councilseat', branch: 'state', cost: 2, req: 'tongue', name: 'Permanent Seat', desc: 'Your Council vote counts three times.', mods: { councilVotes: 3 } },
+    // ---- 20 skills added with the division system ----
+    { id: 'armordoc', branch: 'div', cost: 1, name: 'Armoured Doctrine', desc: 'Armoured divisions advance 15% faster.', mods: { armorSpeed: 1.15 } },
+    { id: 'barrage', branch: 'div', cost: 1, name: 'Rolling Barrage', desc: 'Infantry divisions (artillery & drones) hit 20% harder.', mods: { infPower: 1.2 } },
+    { id: 'drones', branch: 'div', cost: 2, req: 'barrage', name: 'Drone Swarms', desc: 'Divisions influence the front 25% further around them.', mods: { divRadius: 1.25 } },
+    { id: 'academy', branch: 'div', cost: 2, name: 'Military Academy', desc: 'Division training takes half the time.', mods: { trainTime: 0.5 } },
+    { id: 'veterans', branch: 'div', cost: 3, req: 'academy', name: 'Veteran Cadres', desc: 'Fully trained divisions count ×2.4 instead of ×2.', mods: { veteran: 1 } },
+    { id: 'depth', branch: 'div', cost: 2, req: 'armordoc', name: 'Defence in Depth', desc: 'Stacked divisions’ redundancy bonus is 15% stronger.', mods: { depth: 1.15 } },
+    { id: 'rapid', branch: 'div', cost: 1, name: 'Rapid Response', desc: 'Divisions move 40% faster.', mods: { divMove: 1.4 } },
+    { id: 'staff', branch: 'div', cost: 3, req: 'rapid', name: 'General Staff', desc: '+3 divisions.', mods: { generalStaff: 1 } },
+    { id: 'armorbreak', branch: 'war', cost: 2, req: 'spearhead', name: 'Armoured Breakthrough', desc: 'Armour in a breakthrough advances another 20% faster.', mods: { armorBreak: 1.2 } },
+    { id: 'airsup', branch: 'war', cost: 1, req: 'shock', name: 'Air Superiority', desc: 'Airstrikes cost 30% less.', mods: { airCost: 0.7 } },
+    { id: 'counterbattery', branch: 'def', cost: 1, name: 'Counter-Battery', desc: 'Enemy divisions near your land lose 15% of their punch.', mods: { counterBattery: 1 } },
+    { id: 'ironline', branch: 'def', cost: 2, req: 'sandbags', name: 'Iron Line', desc: 'A prepared front (T before they attack) defends 25% better instead of 15%.', mods: { ironLine: 1 } },
+    { id: 'hedgehog', branch: 'def', cost: 2, req: 'bastion', name: 'Hedgehog Positions', desc: 'Enemies pay 10% more troops near your divisions.', mods: { hedgehog: 1.1 } },
+    { id: 'kitchens2', branch: 'log', cost: 1, req: 'kitchens', name: 'Mobile Kitchens', desc: 'Divisions refill from your pool 50% faster.', mods: { divRefill: 1.5 } },
+    { id: 'railmob', branch: 'log', cost: 2, req: 'depots', name: 'Rail Mobilisation', desc: 'Divisions move 40% faster; supply reaches 20% further.', mods: { divMove: 1.4, divSupply: 1.2 } },
+    { id: 'fielddepot', branch: 'log', cost: 2, name: 'Field Depots', desc: 'Cut-off divisions keep 85% of their strength instead of 60%.', mods: { fieldDepot: 1 } },
+    { id: 'armsind', branch: 'eco', cost: 1, req: 'wareco', name: 'Arms Industry', desc: 'Training and division upgrades cost 30% less.', mods: { divCost: 0.7 } },
+    { id: 'reserve', branch: 'eco', cost: 2, req: 'treasury', name: 'National Reserve', desc: '+2 divisions.', mods: { reservePool: 1 } },
+    { id: 'intel', branch: 'state', cost: 1, req: 'tongue', name: 'Intelligence Network', desc: 'Always see enemy divisions within 40 tiles of your border.', mods: { intel: 1 } },
+    { id: 'propaganda', branch: 'state', cost: 1, name: 'Propaganda Bureau', desc: 'Troops grow 5% faster; income +4%.', mods: { growth: 1.05, income: 1.04 } },
   ];
 
   // field directives — picked at 10% and 25% land (original mechanic)

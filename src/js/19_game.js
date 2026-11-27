@@ -358,6 +358,7 @@
     } else if (S.phase === 'play') {
       MP.Eco.tick(dt);
       MP.War.tick(dt);
+      MP.Div.tick(dt);
       G.resolveCapFalls();
       MP.Naval.tick(dt);
       MP.Weapons.tick(dt);

@@ -154,7 +154,9 @@
     let permanent = false;
     if (o && prev && soft) {
       const pn = S.nations[prev], on = S.nations[o];
-      if (G.has(on, 'trench')) soft = 0;                                     // trench diggers never hold fresh land
+      if (G.has(on, 'homeland') && S.home[t] === o) soft = 0;               // Homeland retakes its soil already dug in
+      else if (G.has(on, 'scorched') && S.prevOwner[t] === o) soft = 5;     // Scorched Earth digs back in within 5 seconds
+      else if (G.has(on, 'trench')) soft = 0;                                // trench diggers never hold fresh land
       else if (G.has(pn, 'scorched')) permanent = true;                        // scorched land never settles
       else if (G.has(pn, 'trench') || (G.has(pn, 'homeland') && S.home[t] === prev)) soft *= 2;
       if (soft) soft *= G.mod(on, 'digIn');
@@ -164,6 +166,7 @@
     const x = t % w, y = (t / w) | 0;
     if (prev) {
       const p = S.nations[prev];
+      p.lostSince = true;
       p.tiles--; p.sx -= x; p.sy -= y; p.sxx -= x * x; p.syy -= y * y; p.sxy -= x * y;
       p.border.delete(t);
     }

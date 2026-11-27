@@ -195,7 +195,7 @@
       const ff = fortFactor(at.to, x, y, at.from);
       if (ff) { cost *= C.FORT_COST_MULT * (ff > 1 ? 1.5 : 1); slow *= C.FORT_SLOW * (ff > 1 ? 1.3 : 1); }
       // capital garrison: the ground around a capital is the hardest in the nation
-      if (d.capital >= 0) { const gx = x - d.capX, gy = y - d.capY; if (gx * gx + gy * gy <= C.CAPITAL_GUARD_R * C.CAPITAL_GUARD_R) { cost *= C.CAPITAL_GUARD_COST; slow *= C.CAPITAL_GUARD_SLOW; } }
+      if (d.capital >= 0) { const gr = C.CAPITAL_GUARD_R + Math.sqrt(d.tiles) / 15, gx = x - d.capX, gy = y - d.capY; if (gx * gx + gy * gy <= gr * gr) { cost *= C.CAPITAL_GUARD_COST; slow *= C.CAPITAL_GUARD_SLOW; } }
       // Homeland reclaiming its own soil: 25% cheaper, 3× faster
       if (G.has(a, 'homeland') && S.home[t] === at.from) { cost *= 0.75; slow /= 3; }
       // Scorched Earth retaking burnt land it once held: half price
@@ -217,7 +217,13 @@
     if (sd > free) cost *= 1 + Math.min(C.SUPPLY_MAX_PENALTY, (sd - free) / C.SUPPLY_SPAN);
     if (MP.Weather.stormAt(x, y)) slow *= 1.6;
     if (a.ai) cost /= MP.CONFIG.DIFFICULTY[a.difficulty].eff;
-    return { cost, slow };
+    // divisions on the spot: local punch, armour speed, stacks, prepared defence — and the gaps between them
+    let digIn = 1;
+    if (MP.Div && (a.divs && a.divs.length || (at.to && S.nations[at.to].divs && S.nations[at.to].divs.length))) {
+      const m = MP.Div.tileMods(at, x, y);
+      cost *= m.cost; slow *= m.slow; digIn = m.digIn;
+    }
+    return { cost, slow, digIn };
   };
 
   War.tick = function (dt) {
@@ -279,13 +285,14 @@
         at.budget -= tc.slow;
         at.idle = 0;
         if (defCost) at.def = Math.max(0, at.def - defCost);
+        if (MP.Div) MP.Div.onCapture(at, t % World.W, (t / World.W) | 0, tc.cost);
         if (at.to) {
           const d = S.nations[at.to];
           const loss = Math.min(d.troops, (d.troops / Math.max(1, d.tiles)) * C.DENSITY_LOSS);
           d.troops -= loss;
           d.lastHitBy = at.from; d.lastHitAt = S.t;
         }
-        G.setOwner(t, at.from, C.DUG_IN_SECONDS);
+        G.setOwner(t, at.from, C.DUG_IN_SECONDS * (tc.digIn || 1));
         at.captured++;
         for (const u of neighbors(t)) War.pushFront(at, u);
         if (at.to && S.nations[at.to].tiles <= 0) { G.eliminate(at.to, at.from); War.finish(at, true); break; }
@@ -338,10 +345,13 @@
     if (S.pockets) for (let i = S.pockets.length - 1; i >= 0; i--) if (S.t - S.pockets[i].seen > (S.pockets[i].breakout ? 80 : 16) || !S.nations[S.pockets[i].nation].alive) S.pockets.splice(i, 1);
     if (S.tempForts) for (let i = S.tempForts.length - 1; i >= 0; i--) if (S.tempForts[i].until <= S.t) S.tempForts.splice(i, 1);
     const nn = S.nations.length;
+    // only nations that lost ground can have been cut off; skip the rest (a full sweep still happens slowly)
+    S._pkSweep = (S._pkSweep || 0) + 1;
+    const sweep = S._pkSweep % 8 === 0;
     for (let tries = 0; tries < nn; tries++) {
       War.pocketCursor = War.pocketCursor % (nn - 1) + 1;
       const n = S.nations[War.pocketCursor];
-      if (n && n.alive && n.spawned && n.tiles > 0) { War.analyzePockets(n); return; }
+      if (n && n.alive && n.spawned && n.tiles > 0 && (n.lostSince || sweep || n.isPlayer)) { n.lostSince = false; War.analyzePockets(n); return; }
     }
   };
 

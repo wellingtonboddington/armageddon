@@ -48,6 +48,7 @@
 
   D.truceOdds = function (a, b) {
     const S = G.S;
+    if (a.isAlien || b.isAlien) return 0;
     let s = 0;
     const ratio = strength(a) / Math.max(1, strength(b));
     s += (ratio - 1) * 0.8;                                    // weaker side wants peace
@@ -92,6 +93,7 @@
 
   D.formTruce = function (a, b) {
     const S = G.S;
+    if (!a || !b || a.isAlien || b.isAlien) return; // the Void Armada does not negotiate
     const until = S.t + C.TRUCE_SECONDS;
     a.truces.set(b.id, until); b.truces.set(a.id, until);
     a.wars.delete(b.id); b.wars.delete(a.id);
@@ -484,7 +486,7 @@
         for (const a of al) for (const b of al) if (a.id < b.id && !G.isAllied(a.id, b.id) && !a.isAlien && !b.isAlien) {
           a.truces.set(b.id, S.t + 60); b.truces.set(a.id, S.t + 60);
         }
-        for (const at of S.attacks) if (at.to) MP.War.finish(at, true);
+        for (const at of S.attacks) if (at.to && !G.isAlienPair(at.from, at.to)) MP.War.finish(at, true);
         S.clock = Math.min(C.CLOCK_START, S.clock + 30);
         break;
       }

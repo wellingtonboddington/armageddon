@@ -46,6 +46,7 @@
     const c = C.WEAPON[w].cost;
     let mul = G.S.defcon === 1 ? C.DEFCON_DISCOUNT : 1;
     if (C.WEAPON[w].nuclear && G.S.council.effects.some((e) => e.id === 'testban')) mul *= 1.5;
+    if (w === 'Airstrike') mul *= G.mod(n, 'airCost');
     return { credits: Math.round(c[0] * mul), u: Math.round(c[1] * mul) };
   };
 

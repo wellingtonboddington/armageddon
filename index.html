@@ -460,6 +460,18 @@ body.watch .hud-bc .buildbar, body.watch .hud-bc .stats, body.watch #h-dock, bod
 .m-card .scrap .ico { width: 12px; height: 12px; }
 @media (max-width: 1500px) { .m-title { font-size: 26px; letter-spacing: .1em; } .m-top { padding: 8px 10px; } }
 
+/* divisions front panel */
+.front-panel { display: flex; justify-content: center; }
+.fp { padding: 6px 10px 7px; border-color: var(--y); max-width: 760px; }
+.fp-h { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 11px; }
+.fp-h .t { color: var(--y); letter-spacing: .12em; font-size: 10px; }
+.fp-h b { font: 800 13px var(--head); letter-spacing: .05em; }
+.fp-b { display: flex; gap: 4px; margin-top: 5px; flex-wrap: wrap; }
+.fp-b .btn[disabled] { opacity: .45; cursor: default; }
+.fp-hint { font-size: 9.5px; margin-top: 4px; letter-spacing: .04em; }
+.fp-mini { background: rgba(14, 13, 10, .85); border: 1px solid var(--line); padding: 3px 10px; font-size: 10.5px; color: var(--y); letter-spacing: .05em; }
+.fp-mini .ico { width: 14px; height: 14px; }
+
 /* ==== src/advisor/advisor.css ==== */
 /* MIDNIGHT PROTOCOL — VESPER advisor. Every selector is .vsp- prefixed; colours come from the host palette. */
 .vsp, .vsp *, .vsp *::before, .vsp *::after { box-sizing: border-box; }
@@ -881,6 +893,23 @@ rle:"ALwDtQcADLU1AAS1FQAEtTwAI6H4AQAHoQgAugFOBAAKTjAAgAFBBgArQQQArgFBDAAHQRIABEE
     MILESTONES: [10, 25, 50],
   });
 
+  // ---------- divisions (front-line formations shown as flags) ----------
+  C.DIV = {
+    baseCount: 2, perSqrtTiles: 1 / 10, maxCount: 24,   // more territory → more divisions
+    armorShare: 0.34,
+    infSize: 1500, infCapShare: 0.02,                    // infantry size = 1500 + 2% of troop cap (× upgrades)
+    armorSize: 0.25, armorPower: 10,                     // armour: ~200–1,000 troops that push like 2,000–10,000
+    infPower: 1.0, gearBonus: { artillery: 0.35, drones: 0.25 },
+    radius: 14, armorRadius: 18,
+    moveInf: 3.2, moveArm: 6.5,                          // tiles per second
+    refill: 0.006,                                       // share of max size per second from the pool
+    trainCost: 2500, trainTime: 25, trainedMul: 2,
+    upgradeCost: 6000, upgradeMax: 6, raiseCost: 10000,
+    supplyFactory: 70, supplyHub: 300, unsupplied: 0.6,
+    stackRange: 5, stackMax: 3,
+    preparedBonus: 1.15, spawnEvery: 8, visibleFor: 6,
+  };
+
   // ---------- buildings ----------
   // cost(n) = base + a·n^p (n = total levels already owned) — fit to observed cost ladders
   C.BUILD = {
@@ -893,7 +922,7 @@ rle:"ALwDtQcADLU1AAS1FQAEtTwAI6H4AQAHoQgAugFOBAAKTjAAgAFBBgArQQQArgFBDAAHQRIABEE
     warship: { key: '7', name: 'Warship', icon: 'warship', base: 6000, a: 6000, p: 1.0, time: 8, u: 0, unit: true },
     silo:    { key: '8', name: 'Missile Silo', icon: 'silo', base: 20000, a: 12000, p: 1.2, time: 10, u: 100 },
     radar:   { key: 'R', name: 'Radar', icon: 'radar', base: 12000, a: 7000, p: 1.2, time: 6, u: 0, defense: true },
-    sam:     { key: 'T', name: 'SAM Site', icon: 'sam', base: 15000, a: 9000, p: 1.2, time: 6, u: 50, defense: true },
+    sam:     { key: 'G', name: 'SAM Site', icon: 'sam', base: 15000, a: 9000, p: 1.2, time: 6, u: 50, defense: true },
     abm:     { key: 'Y', name: 'ABM Site', icon: 'abm', base: 30000, a: 18000, p: 1.2, time: 8, u: 150, defense: true },
     laser:   { key: 'U', name: 'Laser Array', icon: 'laser', base: 45000, a: 25000, p: 1.2, time: 10, u: 250, defense: true },
     aegis:   { key: 'J', name: 'Aegis Net', icon: 'aegis', base: 40000, a: 22000, p: 1.2, time: 10, u: 200, defense: true },
@@ -976,7 +1005,7 @@ rle:"ALwDtQcADLU1AAS1FQAEtTwAI6H4AQAHoQgAugFOBAAKTjAAgAFBBgArQQQArgFBDAAHQRIABEE
   // branch order = tree columns; `req` = skill that must be owned first
   C.SKILL_BRANCHES = [
     { id: 'war', name: 'WARFARE' }, { id: 'def', name: 'DEFENCE' }, { id: 'log', name: 'LOGISTICS' },
-    { id: 'eco', name: 'ECONOMY' }, { id: 'state', name: 'STATECRAFT' },
+    { id: 'eco', name: 'ECONOMY' }, { id: 'state', name: 'STATECRAFT' }, { id: 'div', name: 'DIVISIONS' },
   ];
   C.SKILLS = [
     { id: 'shock', branch: 'war', cost: 1, name: 'Shock Assault', desc: 'Attacks cost 6% fewer troops.', mods: { attackCost: 0.94 } },
@@ -999,6 +1028,27 @@ rle:"ALwDtQcADLU1AAS1FQAEtTwAI6H4AQAHoQgAugFOBAAKTjAAgAFBBgArQQQArgFBDAAHQRIABEE
     { id: 'tongue', branch: 'state', cost: 1, name: 'Silver Tongue', desc: 'Alliances, truces and aid requests are 12% more likely to be accepted.', mods: { diplomacy: 1 } },
     { id: 'patron', branch: 'state', cost: 2, req: 'tongue', name: 'Patronage', desc: 'Your puppet-state is 10% more likely to accept a CEDE.', mods: { cedeBonus: 1 } },
     { id: 'councilseat', branch: 'state', cost: 2, req: 'tongue', name: 'Permanent Seat', desc: 'Your Council vote counts three times.', mods: { councilVotes: 3 } },
+    // ---- 20 skills added with the division system ----
+    { id: 'armordoc', branch: 'div', cost: 1, name: 'Armoured Doctrine', desc: 'Armoured divisions advance 15% faster.', mods: { armorSpeed: 1.15 } },
+    { id: 'barrage', branch: 'div', cost: 1, name: 'Rolling Barrage', desc: 'Infantry divisions (artillery & drones) hit 20% harder.', mods: { infPower: 1.2 } },
+    { id: 'drones', branch: 'div', cost: 2, req: 'barrage', name: 'Drone Swarms', desc: 'Divisions influence the front 25% further around them.', mods: { divRadius: 1.25 } },
+    { id: 'academy', branch: 'div', cost: 2, name: 'Military Academy', desc: 'Division training takes half the time.', mods: { trainTime: 0.5 } },
+    { id: 'veterans', branch: 'div', cost: 3, req: 'academy', name: 'Veteran Cadres', desc: 'Fully trained divisions count ×2.4 instead of ×2.', mods: { veteran: 1 } },
+    { id: 'depth', branch: 'div', cost: 2, req: 'armordoc', name: 'Defence in Depth', desc: 'Stacked divisions’ redundancy bonus is 15% stronger.', mods: { depth: 1.15 } },
+    { id: 'rapid', branch: 'div', cost: 1, name: 'Rapid Response', desc: 'Divisions move 40% faster.', mods: { divMove: 1.4 } },
+    { id: 'staff', branch: 'div', cost: 3, req: 'rapid', name: 'General Staff', desc: '+3 divisions.', mods: { generalStaff: 1 } },
+    { id: 'armorbreak', branch: 'war', cost: 2, req: 'spearhead', name: 'Armoured Breakthrough', desc: 'Armour in a breakthrough advances another 20% faster.', mods: { armorBreak: 1.2 } },
+    { id: 'airsup', branch: 'war', cost: 1, req: 'shock', name: 'Air Superiority', desc: 'Airstrikes cost 30% less.', mods: { airCost: 0.7 } },
+    { id: 'counterbattery', branch: 'def', cost: 1, name: 'Counter-Battery', desc: 'Enemy divisions near your land lose 15% of their punch.', mods: { counterBattery: 1 } },
+    { id: 'ironline', branch: 'def', cost: 2, req: 'sandbags', name: 'Iron Line', desc: 'A prepared front (T before they attack) defends 25% better instead of 15%.', mods: { ironLine: 1 } },
+    { id: 'hedgehog', branch: 'def', cost: 2, req: 'bastion', name: 'Hedgehog Positions', desc: 'Enemies pay 10% more troops near your divisions.', mods: { hedgehog: 1.1 } },
+    { id: 'kitchens2', branch: 'log', cost: 1, req: 'kitchens', name: 'Mobile Kitchens', desc: 'Divisions refill from your pool 50% faster.', mods: { divRefill: 1.5 } },
+    { id: 'railmob', branch: 'log', cost: 2, req: 'depots', name: 'Rail Mobilisation', desc: 'Divisions move 40% faster; supply reaches 20% further.', mods: { divMove: 1.4, divSupply: 1.2 } },
+    { id: 'fielddepot', branch: 'log', cost: 2, name: 'Field Depots', desc: 'Cut-off divisions keep 85% of their strength instead of 60%.', mods: { fieldDepot: 1 } },
+    { id: 'armsind', branch: 'eco', cost: 1, req: 'wareco', name: 'Arms Industry', desc: 'Training and division upgrades cost 30% less.', mods: { divCost: 0.7 } },
+    { id: 'reserve', branch: 'eco', cost: 2, req: 'treasury', name: 'National Reserve', desc: '+2 divisions.', mods: { reservePool: 1 } },
+    { id: 'intel', branch: 'state', cost: 1, req: 'tongue', name: 'Intelligence Network', desc: 'Always see enemy divisions within 40 tiles of your border.', mods: { intel: 1 } },
+    { id: 'propaganda', branch: 'state', cost: 1, name: 'Propaganda Bureau', desc: 'Troops grow 5% faster; income +4%.', mods: { growth: 1.05, income: 1.04 } },
   ];
 
   // field directives — picked at 10% and 25% land (original mechanic)
@@ -1976,6 +2026,12 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
       c.beginPath(); c.arc(0.5, 0.5, 0.08, 0, 7); c.fill();
       for (let k = 0; k < 3; k++) { const a = -Math.PI / 2 + k * 2 * Math.PI / 3; c.beginPath(); c.moveTo(0.5 + Math.cos(a - 0.5) * 0.14, 0.5 + Math.sin(a - 0.5) * 0.14); c.arc(0.5, 0.5, 0.42, a - 0.5, a + 0.5); c.arc(0.5, 0.5, 0.14, a + 0.5, a - 0.5, true); c.closePath(); c.fill(); }
     },
+    tank(c) {
+      c.fillRect(0.08, 0.58, 0.84, 0.2); c.fillRect(0.22, 0.4, 0.44, 0.2); c.fillRect(0.6, 0.46, 0.34, 0.07);
+      c.fillStyle = '#000'; for (const x of [0.2, 0.4, 0.6, 0.8]) { c.beginPath(); c.arc(x, 0.72, 0.05, 0, 7); c.fill(); } c.fillStyle = '#fff';
+    },
+    gun(c) { c.beginPath(); c.arc(0.32, 0.72, 0.16, 0, 7); c.fill(); c.save(); c.translate(0.32, 0.6); c.rotate(-0.6); c.fillRect(0, -0.05, 0.62, 0.1); c.restore(); c.fillRect(0.08, 0.82, 0.6, 0.06); },
+    drone(c) { c.fillRect(0.38, 0.42, 0.24, 0.16); c.lineWidth = 0.07; c.beginPath(); c.moveTo(0.18, 0.28); c.lineTo(0.82, 0.72); c.moveTo(0.82, 0.28); c.lineTo(0.18, 0.72); c.stroke(); for (const [x, y] of [[0.18, 0.28], [0.82, 0.28], [0.18, 0.72], [0.82, 0.72]]) { c.beginPath(); c.arc(x, y, 0.1, 0, 7); c.stroke(); } },
     troops(c) { c.beginPath(); c.arc(0.5, 0.42, 0.34, Math.PI, 0); c.lineTo(0.9, 0.56); c.lineTo(0.1, 0.56); c.closePath(); c.fill(); c.fillRect(0.3, 0.6, 0.4, 0.08); },
     flag(c) { c.fillRect(0.2, 0.1, 0.07, 0.8); c.beginPath(); c.moveTo(0.27, 0.12); c.lineTo(0.84, 0.28); c.lineTo(0.27, 0.48); c.closePath(); c.fill(); },
     coin(c) { c.beginPath(); c.ellipse(0.5, 0.36, 0.34, 0.14, 0, 0, 7); c.fill(); c.fillRect(0.16, 0.36, 0.68, 0.16); c.beginPath(); c.ellipse(0.5, 0.52, 0.34, 0.14, 0, 0, 7); c.fill(); c.fillRect(0.16, 0.52, 0.68, 0.16); c.beginPath(); c.ellipse(0.5, 0.68, 0.34, 0.14, 0, 0, 7); c.fill(); },
@@ -4670,7 +4726,9 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     let permanent = false;
     if (o && prev && soft) {
       const pn = S.nations[prev], on = S.nations[o];
-      if (G.has(on, 'trench')) soft = 0;                                     // trench diggers never hold fresh land
+      if (G.has(on, 'homeland') && S.home[t] === o) soft = 0;               // Homeland retakes its soil already dug in
+      else if (G.has(on, 'scorched') && S.prevOwner[t] === o) soft = 5;     // Scorched Earth digs back in within 5 seconds
+      else if (G.has(on, 'trench')) soft = 0;                                // trench diggers never hold fresh land
       else if (G.has(pn, 'scorched')) permanent = true;                        // scorched land never settles
       else if (G.has(pn, 'trench') || (G.has(pn, 'homeland') && S.home[t] === prev)) soft *= 2;
       if (soft) soft *= G.mod(on, 'digIn');
@@ -4680,6 +4738,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     const x = t % w, y = (t / w) | 0;
     if (prev) {
       const p = S.nations[prev];
+      p.lostSince = true;
       p.tiles--; p.sx -= x; p.sy -= y; p.sxx -= x * x; p.syy -= y * y; p.sxy -= x * y;
       p.border.delete(t);
     }
@@ -4946,6 +5005,8 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
         g = 1000 * C.GROW_K * Math.pow(Math.max(0, T), C.GROW_P) * (1 - n.troops / n.cap) + C.GROW_FLOOR;
         g *= G.mod(n, 'growth') * (n.supplyGrowth == null ? 1 : n.supplyGrowth) * (1 - 0.5 * (n.falloutFrac || 0));
         if (n.ai) g *= MP.CONFIG.DIFFICULTY[n.difficulty].eff;
+        // the Void Armada is fed from orbit: it can be bled, but never into a death spiral
+        if (n.isAlien) g = Math.max(g, n.cap * 0.002 * (1 - n.troops / n.cap));
         n.troops = Math.min(n.cap, n.troops + g * dt);
       } else {
         g = -(n.troops - n.cap) * 0.02;
@@ -5437,7 +5498,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
       const ff = fortFactor(at.to, x, y, at.from);
       if (ff) { cost *= C.FORT_COST_MULT * (ff > 1 ? 1.5 : 1); slow *= C.FORT_SLOW * (ff > 1 ? 1.3 : 1); }
       // capital garrison: the ground around a capital is the hardest in the nation
-      if (d.capital >= 0) { const gx = x - d.capX, gy = y - d.capY; if (gx * gx + gy * gy <= C.CAPITAL_GUARD_R * C.CAPITAL_GUARD_R) { cost *= C.CAPITAL_GUARD_COST; slow *= C.CAPITAL_GUARD_SLOW; } }
+      if (d.capital >= 0) { const gr = C.CAPITAL_GUARD_R + Math.sqrt(d.tiles) / 15, gx = x - d.capX, gy = y - d.capY; if (gx * gx + gy * gy <= gr * gr) { cost *= C.CAPITAL_GUARD_COST; slow *= C.CAPITAL_GUARD_SLOW; } }
       // Homeland reclaiming its own soil: 25% cheaper, 3× faster
       if (G.has(a, 'homeland') && S.home[t] === at.from) { cost *= 0.75; slow /= 3; }
       // Scorched Earth retaking burnt land it once held: half price
@@ -5459,7 +5520,13 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     if (sd > free) cost *= 1 + Math.min(C.SUPPLY_MAX_PENALTY, (sd - free) / C.SUPPLY_SPAN);
     if (MP.Weather.stormAt(x, y)) slow *= 1.6;
     if (a.ai) cost /= MP.CONFIG.DIFFICULTY[a.difficulty].eff;
-    return { cost, slow };
+    // divisions on the spot: local punch, armour speed, stacks, prepared defence — and the gaps between them
+    let digIn = 1;
+    if (MP.Div && (a.divs && a.divs.length || (at.to && S.nations[at.to].divs && S.nations[at.to].divs.length))) {
+      const m = MP.Div.tileMods(at, x, y);
+      cost *= m.cost; slow *= m.slow; digIn = m.digIn;
+    }
+    return { cost, slow, digIn };
   };
 
   War.tick = function (dt) {
@@ -5521,13 +5588,14 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
         at.budget -= tc.slow;
         at.idle = 0;
         if (defCost) at.def = Math.max(0, at.def - defCost);
+        if (MP.Div) MP.Div.onCapture(at, t % World.W, (t / World.W) | 0, tc.cost);
         if (at.to) {
           const d = S.nations[at.to];
           const loss = Math.min(d.troops, (d.troops / Math.max(1, d.tiles)) * C.DENSITY_LOSS);
           d.troops -= loss;
           d.lastHitBy = at.from; d.lastHitAt = S.t;
         }
-        G.setOwner(t, at.from, C.DUG_IN_SECONDS);
+        G.setOwner(t, at.from, C.DUG_IN_SECONDS * (tc.digIn || 1));
         at.captured++;
         for (const u of neighbors(t)) War.pushFront(at, u);
         if (at.to && S.nations[at.to].tiles <= 0) { G.eliminate(at.to, at.from); War.finish(at, true); break; }
@@ -5580,10 +5648,13 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     if (S.pockets) for (let i = S.pockets.length - 1; i >= 0; i--) if (S.t - S.pockets[i].seen > (S.pockets[i].breakout ? 80 : 16) || !S.nations[S.pockets[i].nation].alive) S.pockets.splice(i, 1);
     if (S.tempForts) for (let i = S.tempForts.length - 1; i >= 0; i--) if (S.tempForts[i].until <= S.t) S.tempForts.splice(i, 1);
     const nn = S.nations.length;
+    // only nations that lost ground can have been cut off; skip the rest (a full sweep still happens slowly)
+    S._pkSweep = (S._pkSweep || 0) + 1;
+    const sweep = S._pkSweep % 8 === 0;
     for (let tries = 0; tries < nn; tries++) {
       War.pocketCursor = War.pocketCursor % (nn - 1) + 1;
       const n = S.nations[War.pocketCursor];
-      if (n && n.alive && n.spawned && n.tiles > 0) { War.analyzePockets(n); return; }
+      if (n && n.alive && n.spawned && n.tiles > 0 && (n.lostSince || sweep || n.isPlayer)) { n.lostSince = false; War.analyzePockets(n); return; }
     }
   };
 
@@ -5684,6 +5755,414 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
 })();
 
 ;
+/* ==== src/js/13b_divisions.js ==== */
+/* MIDNIGHT PROTOCOL — divisions: infantry and armoured formations shown as flags on the front.
+   They are drawn from the troop pool, supplied by factories / logistics hubs, change attack and
+   defence where they stand (leaving real gaps between them), stack up to three deep, train, upgrade,
+   and can be planned onto a frontline with T. */
+(function () {
+  'use strict';
+  const MP = window.MP, U = MP.U, C = MP.CONFIG, World = MP.World, G = MP.G;
+  const D = C.DIV;
+  const Div = (MP.Div = {});
+  let divId = 1;
+
+  const listOf = (n) => (n.divs || (n.divs = []));
+  Div.all = function () { const out = []; for (const n of G.S.nations) if (n && n.alive && n.divs) for (const d of n.divs) out.push(d); return out; };
+
+  // ---------------- sizing ----------------
+  Div.cap = function (n) {
+    let c = D.baseCount + Math.floor(Math.sqrt(Math.max(0, n.tiles)) * D.perSqrtTiles) + (n.divExtra || 0);
+    if (G.has(n, 'generalStaff')) c += 3;
+    if (G.has(n, 'reservePool')) c += 2;
+    return Math.min(D.maxCount + (n.divExtra || 0), c);
+  };
+  Div.maxSize = function (n, d) {
+    const inf = (D.infSize + D.infCapShare * (n.cap || C.CAP_BASE)) * (1 + 0.3 * (n.divLevel || 0));
+    return d.type === 'arm' ? inf * D.armorSize : inf;
+  };
+  Div.power = function (d) {
+    const n = G.S.nations[d.owner];
+    let mul = d.type === 'arm' ? D.armorPower : D.infPower + (D.gearBonus[d.gear] || 0);
+    if (d.type === 'inf') mul *= G.mod(n, 'infPower');
+    if (d.trainedFull) mul *= G.has(n, 'veteran') ? 2.4 : D.trainedMul;
+    if (!d.supplied) mul *= G.has(n, 'fieldDepot') ? 0.85 : D.unsupplied;
+    return d.size * mul;
+  };
+  Div.radius = (d) => (d.type === 'arm' ? D.armorRadius : D.radius) * G.mod(G.S.nations[d.owner], 'divRadius');
+
+  function spawnDiv(n, type) {
+    const S = G.S;
+    const gear = type === 'arm' ? (S.rng() < 0.5 ? 'tanks' : 'motorized') : (S.rng() < 0.5 ? 'artillery' : 'drones');
+    const d = { id: divId++, owner: n.id, type, gear, x: n.capX, y: n.capY, tx: n.capX, ty: n.capY, size: 0, trained: 0, trainedFull: false, training: false,
+      supplied: true, vis: 0, mode: 'garrison', front: 0, stack: 0, sel: false };
+    listOf(n).push(d);
+    return d;
+  }
+
+  // ---------------- geometry helpers ----------------
+  // a point a few tiles inside our land next to (fx, fy) on the enemy side
+  function insidePoint(n, fx, fy, depth) {
+    const cx = n.tiles ? n.sx / n.tiles : n.capX, cy = n.tiles ? n.sy / n.tiles : n.capY;
+    const dx = cx - fx, dy = cy - fy, L = Math.hypot(dx, dy) || 1;
+    const x = Math.round(fx + dx / L * depth), y = Math.round(fy + dy / L * depth);
+    const t = G.nearestOwned(n.id, x, y, 6);
+    return t >= 0 ? [t % World.W + 0.5, ((t / World.W) | 0) + 0.5] : [fx, fy];
+  }
+  // border tiles of n that touch `enemy`, sampled and ordered along the border
+  Div.sharedBorder = function (n, enemy, maxPts) {
+    const S = G.S, W = World.W, pts = [];
+    let k = 0;
+    for (const t of n.border) {
+      if ((k++ & 1) !== 0) continue;
+      const x = t % W;
+      if ((x > 0 && S.owner[t - 1] === enemy) || (x < W - 1 && S.owner[t + 1] === enemy) || (t >= W && S.owner[t - W] === enemy) || (t < World.N - W && S.owner[t + W] === enemy)) pts.push([x, (t / W) | 0]);
+      if (pts.length > 2000) break;
+    }
+    if (pts.length < 2) return pts;
+    // order roughly along the principal axis so evenly spaced picks spread along the front
+    let mx = 0, my = 0; for (const p of pts) { mx += p[0]; my += p[1]; } mx /= pts.length; my /= pts.length;
+    let cxx = 0, cyy = 0, cxy = 0; for (const p of pts) { const a = p[0] - mx, b = p[1] - my; cxx += a * a; cyy += b * b; cxy += a * b; }
+    const ang = 0.5 * Math.atan2(2 * cxy, cxx - cyy), ux = Math.cos(ang), uy = Math.sin(ang);
+    pts.sort((a, b) => (a[0] * ux + a[1] * uy) - (b[0] * ux + b[1] * uy));
+    if (!maxPts || pts.length <= maxPts) return pts;
+    const out = [];
+    for (let i = 0; i < maxPts; i++) out.push(pts[Math.floor((i + 0.5) * pts.length / maxPts)]);
+    return out;
+  };
+
+  // spread divisions along a border: armour and infantry interleaved, extras stacked behind
+  Div.spread = function (n, enemy, divs, opts) {
+    if (!divs.length) return;
+    const lines = Math.max(1, Math.ceil(divs.length / Math.max(1, Math.ceil(divs.length / 1))));
+    const frontCount = Math.max(1, Math.ceil(divs.length / (opts && opts.stack ? 2 : 1)));
+    const pts = Div.sharedBorder(n, enemy, frontCount);
+    if (!pts.length) return;
+    divs.forEach((d, i) => {
+      const p = pts[i % pts.length];
+      const row = Math.floor(i / pts.length);
+      const [x, y] = insidePoint(n, p[0], p[1], 2.5 + row * 4);
+      d.tx = x; d.ty = y;
+      if (opts && opts.teleport) { d.x = x; d.y = y; }
+    });
+    return lines;
+  };
+
+  // ---------------- supply ----------------
+  function supplyCheck(n, d) {
+    const r1 = D.supplyFactory * G.mod(n, 'supply') * G.mod(n, 'divSupply'), r2 = D.supplyHub * G.mod(n, 'supply') * G.mod(n, 'divSupply');
+    for (const f of n.st.factory) if (G.isActive(f) && U.dist2(f.x, f.y, d.x, d.y) <= r1 * r1) { d.src = f; return true; }
+    for (const h of n.st.hub) if (G.isActive(h) && U.dist2(h.x, h.y, d.x, d.y) <= r2 * r2) { d.src = h; return true; }
+    if (n.capital >= 0 && U.dist2(n.capX, n.capY, d.x, d.y) <= 40 * 40) { d.src = null; return true; } // the capital feeds its own garrison
+    d.src = null;
+    return false;
+  }
+
+  // ---------------- per-tick ----------------
+  Div.tick = function (dt) {
+    const S = G.S;
+    S._divT = (S._divT || 0) + dt;
+    const slow = S._divT >= 1;
+    if (slow) S._divT = 0;
+    for (const n of S.nations) {
+      if (!n || !n.alive || !n.spawned) continue;
+      const divs = listOf(n);
+      // movement (every tick)
+      const mv = G.mod(n, 'divMove');
+      for (const d of divs) {
+        const dx = d.tx - d.x, dy = d.ty - d.y, L = Math.hypot(dx, dy);
+        if (L > 0.05) { const sp = (d.type === 'arm' ? D.moveArm : D.moveInf) * mv * dt * 2.2; if (L <= sp) { d.x = d.tx; d.y = d.ty; } else { d.x += dx / L * sp; d.y += dy / L * sp; } }
+      }
+      if (!slow) continue;
+      // once a second: spawn, refill, supply, training, assignment, stacks
+      const cap = Div.cap(n);
+      n._divSpawn = (n._divSpawn || 0) + 1;
+      if (divs.length < cap && n._divSpawn >= D.spawnEvery) {
+        n._divSpawn = 0;
+        const arm = divs.filter((d) => d.type === 'arm').length;
+        const d = spawnDiv(n, arm < divs.length * D.armorShare ? 'arm' : 'inf');
+        if (n.divPlan) { d.mode = 'plan'; d.front = n.divPlan.enemy; }
+      }
+      while (divs.length > cap + 2) { const d = divs.pop(); n.troops += d.size; }
+      const refill = D.refill * G.mod(n, 'divRefill');
+      for (const d of divs) {
+        const ms = Div.maxSize(n, d);
+        d.supplied = supplyCheck(n, d);
+        if (d.size < ms && d.supplied && n.troops > 1000) { const add = Math.min(ms - d.size, ms * refill * (d.size < ms * 0.2 ? 4 : 1), n.troops * 0.02); d.size += add; n.troops -= add; }
+        if (d.training) {
+          d.trained += 1 / (D.trainTime * G.mod(n, 'trainTime'));
+          if (d.trained >= 1) { d.trained = 1; d.training = false; d.trainedFull = true; if (n.isPlayer) MP.FX.ping(d.x, d.y, [255, 210, 31]); }
+        }
+        // retreat if the ground under it was lost
+        const t = Math.round(d.x) + Math.round(d.y) * World.W;
+        if (S.owner[t] !== n.id) { const u = G.nearestOwned(n.id, Math.round(d.x), Math.round(d.y), 12); if (u >= 0) { d.x = d.tx = u % World.W + 0.5; d.y = d.ty = ((u / World.W) | 0) + 0.5; } }
+      }
+      Div.assign(n);
+      Div.computeStacks(n);
+    }
+  };
+
+  // ---------------- automatic deployment ----------------
+  Div.assign = function (n) {
+    const S = G.S, divs = listOf(n);
+    if (!divs.length) return;
+    const incoming = S.attacks.filter((a) => !a.done && a.to === n.id && a.front.length);
+    const outgoing = S.attacks.filter((a) => !a.done && a.from === n.id && a.to && a.front.length);
+    const plan = n.divPlan;
+    const free = divs.filter((d) => d.mode !== 'plan');
+    // planned divisions fight on their own front; they only follow attacks against that enemy
+    if (plan) {
+      for (const d of divs) if (d.mode === 'plan') {
+        const fight = incoming.some((a) => a.from === plan.enemy) || outgoing.some((a) => a.to === plan.enemy);
+        if (fight) d.vis = S.t + D.visibleFor;
+        if (n.isPlayer) d.vis = Math.max(d.vis, S.t + 1.5);
+      }
+    }
+    // invaded: free divisions appear on the threatened front immediately
+    if (incoming.length && free.length) {
+      // each threatened front gets divisions in proportion to its width (a beachhead gets one or two, a wide
+      // land front gets many); the rest stay in reserve. Divisions already on a front keep their place.
+      const want = incoming.map((a) => Math.max(1, Math.min(8, Math.ceil(a.front.length / 30))));
+      const totalWant = want.reduce((x, y) => x + y, 0);
+      const scale = totalWant > free.length ? free.length / totalWant : 1;
+      const pool = free.slice().sort((x, y) => (y.mode === 'defend') - (x.mode === 'defend'));
+      const taken = new Set();
+      const groups = incoming.map((a, i) => {
+        const k = Math.max(1, Math.floor(want[i] * scale));
+        const g = [];
+        for (const d of pool) { if (g.length >= k) break; if (!taken.has(d) && d.mode === 'defend' && d.front === a.from) { g.push(d); taken.add(d); } }
+        for (const d of pool) { if (g.length >= k) break; if (!taken.has(d)) { g.push(d); taken.add(d); } }
+        return g;
+      });
+      for (const d of free) if (!taken.has(d) && d.mode === 'defend') { d.mode = 'garrison'; d.front = 0; }
+      incoming.forEach((a, i) => {
+        const group = groups[i];
+        if (!group.length) return;
+        const pts = samplePoints(a, group.length, a.fx);
+        group.forEach((d, j) => {
+          const p = pts[j % pts.length];
+          const [x, y] = insidePoint(n, p[0], p[1], 2.5 + Math.floor(j / pts.length) * 4);
+          if (d.mode !== 'defend' || d.front !== a.from) { d.x = x; d.y = y; } // spawn straight onto the line
+          d.tx = x; d.ty = y; d.mode = 'defend'; d.front = a.from; d.vis = S.t + D.visibleFor;
+        });
+      });
+      return;
+    }
+    // attacking: free divisions (armour first) move up behind the point of main effort
+    if (outgoing.length && free.length) {
+      const sorted = free.slice().sort((a, b) => (b.type === 'arm') - (a.type === 'arm'));
+      const per = Math.max(1, Math.ceil(sorted.length / outgoing.length));
+      outgoing.forEach((a, i) => {
+        const group = sorted.slice(i * per, (i + 1) * per);
+        if (!group.length) return;
+        const pts = samplePoints(a, Math.max(1, Math.ceil(group.length / 2)), true);
+        group.forEach((d, j) => {
+          const p = pts[j % pts.length];
+          const [x, y] = insidePoint(n, p[0], p[1], 1.5 + Math.floor(j / pts.length) * 4);
+          d.tx = x; d.ty = y; d.mode = 'attack'; d.front = a.to; d.vis = S.t + D.visibleFor;
+        });
+      });
+      return;
+    }
+    // quiet: free divisions fall back to garrison around the capital and cities (hidden)
+    for (const d of free) {
+      if (d.mode === 'garrison' && U.dist2(d.tx, d.ty, n.capX, n.capY) < 400) continue;
+      d.mode = 'garrison'; d.front = 0;
+      const spots = [[n.capX, n.capY]].concat(n.st.city.map((c) => [c.x, c.y]));
+      const s = spots[d.id % spots.length];
+      d.tx = s[0] + ((d.id * 7) % 5) - 2; d.ty = s[1] + ((d.id * 3) % 5) - 2;
+    }
+  };
+
+  // points along an attack's front, weighted toward its clicked point of main effort
+  function samplePoints(a, k, focus) {
+    const W = World.W, f = a.front;
+    let pts = [];
+    const step = Math.max(1, Math.floor(f.length / 200));
+    for (let i = 0; i < f.length; i += step) pts.push([f[i] % W, (f[i] / W) | 0]);
+    if (focus && a.fx != null && pts.length > k * 3) {
+      pts.sort((p, q) => ((p[0] - a.fx) ** 2 + (p[1] - a.fy) ** 2) - ((q[0] - a.fx) ** 2 + (q[1] - a.fy) ** 2));
+      pts = pts.slice(0, Math.max(k * 3, Math.round(pts.length * 0.3)));
+    }
+    if (pts.length <= k) return pts.length ? pts : [[a.fx || 0, a.fy || 0]];
+    // spread picks across the (sorted-by-angle-ish) sample
+    let mx = 0, my = 0; for (const p of pts) { mx += p[0]; my += p[1]; } mx /= pts.length; my /= pts.length;
+    pts.sort((p, q) => Math.atan2(p[1] - my, p[0] - mx) - Math.atan2(q[1] - my, q[0] - mx));
+    const out = [];
+    for (let i = 0; i < k; i++) out.push(pts[Math.floor((i + 0.5) * pts.length / k)]);
+    return out;
+  }
+
+  // stacks: a division with others of ours right behind it (toward our interior) leads a stack (max 3)
+  Div.computeStacks = function (n) {
+    const divs = listOf(n), r2 = D.stackRange * D.stackRange;
+    for (const d of divs) d.stack = 0;
+    for (const d of divs) {
+      if (d.mode === 'garrison') continue;
+      let depth = 0;
+      for (const e of divs) {
+        if (e === d || e.mode === 'garrison') continue;
+        if (U.dist2(d.x, d.y, e.x, e.y) <= r2) depth++;
+      }
+      d.stack = Math.min(D.stackMax - 1, depth);
+    }
+  };
+
+  // ---------------- combat effects ----------------
+  // multipliers for capturing tile (x,y) in attack `at`
+  Div.tileMods = function (at, x, y) {
+    const S = G.S;
+    const a = S.nations[at.from], d = at.to ? S.nations[at.to] : null;
+    let pa = 0, pd = 0, armA = 0, stackA = 0, stackD = 0, nearD = false;
+    if (a && a.divs) for (const v of a.divs) {
+      if (v.mode === 'garrison') continue;
+      const r = Div.radius(v);
+      if (U.dist2(v.x, v.y, x, y) > r * r) continue;
+      let p = Div.power(v);
+      if (d && G.has(d, 'counterBattery')) p *= 0.85;
+      pa += p;
+      if (v.type === 'arm') armA++;
+      stackA = Math.max(stackA, v.stack);
+    }
+    if (d && d.divs) for (const v of d.divs) {
+      if (v.mode === 'garrison') continue;
+      const r = Div.radius(v);
+      if (U.dist2(v.x, v.y, x, y) > r * r) continue;
+      let p = Div.power(v);
+      if (G.has(a, 'counterBattery')) p *= 0.85;
+      pd += p; nearD = true;
+      stackD = Math.max(stackD, v.stack);
+    }
+    let cost = (1 + pd / 12000) / (1 + pa / 10000);
+    let speed = 1;
+    if (armA) {
+      speed *= Math.pow(1.3 * G.mod(a, 'armorSpeed'), Math.min(3, armA));        // +30% per armoured division (stacks)
+      if (at.press > 0.5) speed *= 1.2 * G.mod(a, 'armorBreak');                  // breakthroughs: +20% more
+    }
+    if (stackA) speed *= 1 + 0.1 * stackA;                                          // the lead of a stack pushes 10% faster per support
+    let slow = 1;
+    if (stackD) { const k = 1 + 0.25 * G.mod(d, 'depth'); cost *= k; slow *= k; }   // redundant defence: +25% cost, ground lost 25% slower
+    if (nearD && d.divPlan && d.divPlan.enemy === at.from && d.divPlan.prepared) {
+      const k = G.has(d, 'ironLine') ? 1.25 : D.preparedBonus; cost *= k; slow *= k;   // a front planned before they attacked
+    }
+    if (nearD) cost *= G.mod(d, 'hedgehog');
+    slow *= 1 + pd / 60000;
+    return { cost: U.clamp(cost, 0.4, 3.2), slow: U.clamp(slow, 1, 3) / speed, digIn: stackA ? 0.67 : 1 };
+  };
+
+  // casualties after a capture: attackers near the tile pay part of the cost, defenders near it lose men
+  Div.onCapture = function (at, x, y, cost) {
+    const S = G.S;
+    const a = S.nations[at.from], d = at.to ? S.nations[at.to] : null;
+    const near = (n) => (n && n.divs ? n.divs.filter((v) => v.mode !== 'garrison' && U.dist2(v.x, v.y, x, y) <= Div.radius(v) ** 2) : []);
+    const na = near(a);
+    if (na.length) { const loss = cost * 0.25 / na.length; for (const v of na) { v.size = Math.max(0, v.size - loss); v.vis = S.t + D.visibleFor; } }
+    const nd = near(d);
+    if (nd.length) { const loss = cost * 0.35 / nd.length; for (const v of nd) { v.size = Math.max(0, v.size - loss); v.vis = S.t + D.visibleFor; } }
+  };
+
+  // ---------------- planning (T) ----------------
+  Div.togglePlan = function (n, enemyId) {
+    const S = G.S, e = S.nations[enemyId];
+    if (n.divPlan && n.divPlan.enemy === enemyId) { Div.recall(n); return 'off'; }
+    if (n.divPlan) return 'busy';
+    if (!e || !e.alive || G.isAllied(n.id, enemyId) || !MP.War.bordersWith(n.id, enemyId)) return 'nofront';
+    const attacking = S.attacks.some((a) => !a.done && a.from === enemyId && a.to === n.id);
+    n.divPlan = { enemy: enemyId, prepared: !attacking, at: S.t };
+    for (const d of listOf(n)) { d.mode = 'plan'; d.front = enemyId; d.vis = S.t + 2; }
+    Div.spread(n, enemyId, listOf(n).slice().sort((a, b) => (b.type === 'arm') - (a.type === 'arm')), { stack: false });
+    // the other side sees the build-up and gets ready
+    if (e.ai) { e.ai.alertFrom = n.id; e.ai.alertAt = S.t; if (!e.divPlan) Div.aiPlan(e, n.id, true); }
+    return 'on';
+  };
+  Div.recall = function (n) {
+    n.divPlan = null;
+    for (const d of listOf(n)) { d.mode = 'garrison'; d.front = 0; d.sel = false; }
+    Div.assign(n);
+  };
+  Div.trainCost = (n) => Math.round(D.trainCost * G.mod(n, 'divCost'));
+  Div.trainAll = function (n) {
+    const todo = listOf(n).filter((d) => !d.trainedFull && !d.training);
+    if (!todo.length) return { ok: false, reason: 'Every division is already trained' };
+    const cost = Div.trainCost(n) * todo.length;
+    if (n.credits < cost) return { ok: false, reason: `Training costs ${U.fmtK(cost)} credits` };
+    n.credits -= cost;
+    for (const d of todo) { d.training = true; d.trained = 0; d.vis = G.S.t + D.visibleFor; }
+    return { ok: true, count: todo.length, cost };
+  };
+  Div.upgradeCost = (n) => Math.round(D.upgradeCost * Math.pow((n.divLevel || 0) + 1, 1.5) * G.mod(n, 'divCost'));
+  Div.upgrade = function (n) {
+    if ((n.divLevel || 0) >= D.upgradeMax) return { ok: false, reason: 'Divisions are at maximum strength' };
+    const c = Div.upgradeCost(n);
+    if (n.credits < c) return { ok: false, reason: `Upgrade costs ${U.fmtK(c)} credits` };
+    n.credits -= c; n.divLevel = (n.divLevel || 0) + 1;
+    return { ok: true, cost: c };
+  };
+  Div.raiseCost = (n) => Math.round(D.raiseCost * ((n.divExtra || 0) + 1) * G.mod(n, 'divCost'));
+  Div.raise = function (n) {
+    const c = Div.raiseCost(n);
+    if (n.credits < c) return { ok: false, reason: `A new division costs ${U.fmtK(c)} credits` };
+    n.credits -= c; n.divExtra = (n.divExtra || 0) + 1;
+    const arm = listOf(n).filter((d) => d.type === 'arm').length;
+    const d = spawnDiv(n, arm < listOf(n).length * D.armorShare ? 'arm' : 'inf');
+    if (n.divPlan) { d.mode = 'plan'; d.front = n.divPlan.enemy; }
+    return { ok: true, cost: c, div: d };
+  };
+  Div.moveTo = function (d, x, y) { d.tx = x; d.ty = y; d.vis = G.S.t + D.visibleFor; };
+
+  // AI: mass divisions on a border before an attack (visible to the target) or to meet a threat
+  Div.aiPlan = function (n, enemyId, prepared) {
+    if (n.divPlan || !MP.War.bordersWith(n.id, enemyId)) return false;
+    n.divPlan = { enemy: enemyId, prepared: !!prepared, at: G.S.t, ai: true };
+    for (const d of listOf(n)) { d.mode = 'plan'; d.front = enemyId; d.vis = G.S.t + 20; }
+    Div.spread(n, enemyId, listOf(n), { stack: true });
+    return true;
+  };
+  Div.aiTick = function (n) {
+    const S = G.S;
+    if (!n.divPlan) return;
+    const e = S.nations[n.divPlan.enemy];
+    const stale = S.t - n.divPlan.at > 90 && !S.attacks.some((a) => !a.done && (a.from === n.id || a.to === n.id) && (a.from === e.id || a.to === e.id));
+    if (!e || !e.alive || G.isAllied(n.id, e.id) || stale) Div.recall(n);
+    // rich AI trains and upgrades
+    if (n.credits > 60000 && S.rng() < 0.05) Div.trainAll(n);
+    if (n.credits > 120000 && S.rng() < 0.03) Div.upgrade(n);
+  };
+
+  // visibility for the player
+  // is (x,y) within r tiles of nation id's land? (coarse ring sampling)
+  function nearLand(id, x, y, r) {
+    const S = G.S, W = World.W, H = World.H;
+    x = Math.round(x); y = Math.round(y);
+    for (let rr = 0; rr <= r; rr += 3) {
+      const steps = Math.max(6, Math.round(rr * 1.6));
+      for (let k = 0; k < steps; k++) {
+        const ang = (k / steps) * Math.PI * 2;
+        const xx = Math.round(x + Math.cos(ang) * rr), yy = Math.round(y + Math.sin(ang) * rr);
+        if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
+        if (S.owner[xx + yy * W] === id) return true;
+      }
+    }
+    return false;
+  }
+  Div.visibleTo = function (d, p) {
+    const S = G.S;
+    if (!p || S.opts.mode === 'watch') return d.vis > S.t && d.mode !== 'garrison';
+    if (d.owner === p.id) return !!p.divPlan || (d.vis > S.t && d.mode !== 'garrison');
+    if (d.mode === 'garrison') return false;
+    if (d.vis > S.t && (d.front === p.id || G.isAllied(d.front, p.id))) return true;  // fighting us or our allies
+    if (d.mode === 'plan' && d.front === p.id) return true;                             // massing on our border
+    const spy = p.divPlan && p.divPlan.enemy === d.owner, intel = G.has(p, 'intel');
+    if (!spy && !intel) return false;
+    // front-line intel / INTEL skill: only divisions close to our land, re-checked twice a second
+    if (d._seeT > S.t && d._seeP === p.id) return d._seeV;
+    d._seeT = S.t + 0.5; d._seeP = p.id;
+    d._seeV = nearLand(p.id, d.x, d.y, intel ? 30 : 18);
+    return d._seeV;
+  };
+})();
+
+;
 /* ==== src/js/14_naval.js ==== */
 /* MIDNIGHT PROTOCOL — naval: trade ships, warships (patrol/fuel/hunt/prize), troop transports */
 (function () {
@@ -5713,15 +6192,29 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
 
   // ---------------- transports ----------------
   // launch a troop transport from our nearest coast to a coastal target tile
+  // how much enemy-held land surrounds a coast tile (0–25, sampled 5×5 at stride 2 over a 9×9 box)
+  Naval.landMass = function (u, selfId) {
+    const S = G.S, w = World.W, x = u % w, y = (u / w) | 0;
+    let c = 0;
+    for (let dy = -4; dy <= 4; dy += 2) for (let dx = -4; dx <= 4; dx += 2) {
+      const xx = x + dx, yy = y + dy;
+      if (xx < 0 || yy < 0 || xx >= w || yy >= World.H) continue;
+      const t = xx + yy * w;
+      if (World.land[t] && S.owner[t] !== selfId) c++;
+    }
+    return c;
+  };
+
   Naval.launchTransport = function (n, targetTile, troops) {
     const S = G.S, w = World.W;
     const tx = targetTile % w, ty = (targetTile / w) | 0;
     // landing tile: nearest coast tile to the click that is not ours
+    // (prefers shore with real land behind it, so a landing doesn't strand itself on a one-tile islet)
     let land = -1, bd = 1e9;
     for (let dy = -12; dy <= 12; dy++) for (let dx = -12; dx <= 12; dx++) {
       const u = targetTile + dx + dy * w;
       if (u < 0 || u >= World.N || !World.coast[u] || S.owner[u] === n.id) continue;
-      const d = dx * dx + dy * dy; if (d < bd) { bd = d; land = u; }
+      const d = dx * dx + dy * dy - 10 * Naval.landMass(u, n.id); if (d < bd) { bd = d; land = u; }
     }
     if (land < 0) return { ok: false, reason: 'No coast to land on there' };
     const lx = land % w, ly = (land / w) | 0;
@@ -6024,6 +6517,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     const c = C.WEAPON[w].cost;
     let mul = G.S.defcon === 1 ? C.DEFCON_DISCOUNT : 1;
     if (C.WEAPON[w].nuclear && G.S.council.effects.some((e) => e.id === 'testban')) mul *= 1.5;
+    if (w === 'Airstrike') mul *= G.mod(n, 'airCost');
     return { credits: Math.round(c[0] * mul), u: Math.round(c[1] * mul) };
   };
 
@@ -6444,6 +6938,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
 
   D.truceOdds = function (a, b) {
     const S = G.S;
+    if (a.isAlien || b.isAlien) return 0;
     let s = 0;
     const ratio = strength(a) / Math.max(1, strength(b));
     s += (ratio - 1) * 0.8;                                    // weaker side wants peace
@@ -6488,6 +6983,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
 
   D.formTruce = function (a, b) {
     const S = G.S;
+    if (!a || !b || a.isAlien || b.isAlien) return; // the Void Armada does not negotiate
     const until = S.t + C.TRUCE_SECONDS;
     a.truces.set(b.id, until); b.truces.set(a.id, until);
     a.wars.delete(b.id); b.wars.delete(a.id);
@@ -6880,7 +7376,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
         for (const a of al) for (const b of al) if (a.id < b.id && !G.isAllied(a.id, b.id) && !a.isAlien && !b.isAlien) {
           a.truces.set(b.id, S.t + 60); b.truces.set(a.id, S.t + 60);
         }
-        for (const at of S.attacks) if (at.to) MP.War.finish(at, true);
+        for (const at of S.attacks) if (at.to && !G.isAlienPair(at.from, at.to)) MP.War.finish(at, true);
         S.clock = Math.min(C.CLOCK_START, S.clock + 30);
         break;
       }
@@ -7082,7 +7578,16 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     // ---------------- land war ----------------
     if (!capped && S.t - ai.lastAttack > (n.puppet && ai.focus ? 2 : 4) && fill > (n.puppet && ai.focus ? 0.2 : 0.5 - pers.aggro * 0.15)) {
       const target = AI.pickTarget(n, pers);
-      if (target) {
+      // mobilise first: mass divisions on the border (the target can see it coming), then strike
+      if (target && n.divs && n.divs.length && !n.divPlan && (target.isPlayer || S.rng() < 0.25) && !S.attacks.some((x) => !x.done && x.from === n.id && x.to === target.id)) {
+        if (MP.Div.aiPlan(n, target.id, true)) {
+          ai.mobilizeUntil = S.t + 10 + S.rng() * 10;
+          if (target.isPlayer) { MP.Game.wire('IMINT', `${n.name} MOBILISES DIVISIONS ON YOUR BORDER`, 'bad'); MP.Game.notify('attack.mobilise', { nation: n.name, text: `${n.name} is massing divisions on our border. Press T on them to answer.`, priority: 2 }); }
+          ai.lastAttack = S.t;
+        }
+      }
+      const mobilising = ai.mobilizeUntil && S.t < ai.mobilizeUntil;
+      if (target && !mobilising) {
         const ratio = 0.22 + pers.aggro * 0.3;
         // aim the assault: at their capital, or a weak point between forts
         const aim = AI.attackAim(n, target);
@@ -7094,6 +7599,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     }
     if (ai.coastal && S.t - ai.lastBoat > 60 && fill > 0.7 && S.rng() < 0.08 * pers.naval + (ai.unclaimed ? 0 : 0.04)) AI.boatAttack(n);
 
+    if (n.divs) MP.Div.aiTick(n);
     // ---------------- strategic weapons ----------------
     AI.strike(n, pers);
 
@@ -7232,7 +7738,8 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     const fill = n.troops / Math.max(1, n.cap);
     const mine = S.attacks.filter((a) => a.from === n.id && !a.done);
     if (ai.unclaimed && fill > 0.12 && !mine.some((a) => a.to === 0)) MP.War.launch(n.id, 0, n.troops * 0.3);
-    if (S.t - ai.lastAttack > 4 && (fill > 0.2 || n.troops > 60000)) {
+    const under = S.attacks.filter((a) => a.to === n.id && !a.done).length;
+    if (S.t - ai.lastAttack > 4 && (fill > 0.2 || n.troops > 60000) && !(under >= 3 && fill < 0.25)) {
       let best = null, bs = -1e9;
       for (const [o, cnt] of ai.neighbors) {
         const e = S.nations[o];
@@ -7241,12 +7748,16 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
         if (sc > bs) { bs = sc; best = e; }
       }
       if (best) { const aim = AI.attackAim(n, best); MP.War.launch(n.id, best.id, n.troops * 0.25, aim ? { fx: aim[0], fy: aim[1] } : null); ai.lastAttack = S.t; }
-      else if (S.t - ai.lastBoat > 15) {
-        // nothing left to reach on land: cross the sea toward the nearest nation
-        const cx = n.sx / Math.max(1, n.tiles), cy = n.sy / Math.max(1, n.tiles);
-        const near = G.alive().filter((e) => e.id !== n.id && e.tiles > 20).sort((a, b) => U.dist2(a.capX, a.capY, cx, cy) - U.dist2(b.capX, b.capY, cx, cy))[S.rng.int(3)];
-        if (near) AI.boatAttackOn(n, near); else AI.boatAttack(n);
-      }
+    }
+    // sea invasions: when the continent is ours, several at once; when rich in troops, keep a second front open by sea
+    const afloat = S.ships.filter((s) => s.owner === n.id && s.kind === 'transport').length;
+    const landLocked = !ai.neighbors.size || !Array.from(ai.neighbors.keys()).some((o) => G.canAttack(n.id, o));
+    if ((landLocked && fill > 0.15 && S.t - ai.lastBoat > 6 && afloat < 3) || (!landLocked && fill > 0.5 && under < 3 && S.t - ai.lastBoat > 25 && afloat < 1)) {
+      const cx = n.sx / Math.max(1, n.tiles), cy = n.sy / Math.max(1, n.tiles);
+      const near = G.alive().filter((e) => e.id !== n.id && e.tiles > (landLocked ? 60 : 20) && G.canAttack(n.id, e.id)).sort((a, b) => U.dist2(a.capX, a.capY, cx, cy) - U.dist2(b.capX, b.capY, cx, cy));
+      const tgt = near[S.rng.int(Math.min(landLocked ? 5 : 3, near.length))];
+      if (tgt) AI.boatAttackOn(n, tgt, landLocked ? 0.2 : 0.15); else AI.boatAttack(n);
+      ai.lastBoat = S.t;
     }
     // build up the base at hyper speed
     if (S.t - ai.lastBuild > 1.5) {
@@ -7273,16 +7784,21 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     return e.capital >= 0 ? [e.capX, e.capY] : null;
   };
 
-  AI.boatAttackOn = function (n, f) {
+  AI.boatAttackOn = function (n, f, share) {
     const S = G.S, W = World.W;
     n.ai.lastBoat = S.t;
     const coast = [];
     let k = 0;
     for (const t of f.border) { if (World.coast[t] && (k++ % 5) === 0) coast.push(t); if (coast.length > 60) break; }
     if (!coast.length) return;
+    // nearest shore that has real land behind it (skip islets the beachhead would be stranded on)
     let best = coast[0], bd = 1e18;
-    for (const t of coast) { const d = U.dist2(t % W, (t / W) | 0, n.capX, n.capY); if (d < bd) { bd = d; best = t; } }
-    MP.Naval.launchTransport(n, best, n.troops * 0.3);
+    for (const t of coast) {
+      const mass = MP.Naval.landMass(t, n.id);
+      const d = U.dist2(t % W, (t / W) | 0, n.capX, n.capY) * (mass >= 12 ? 1 : mass >= 6 ? 2.5 : 8);
+      if (d < bd) { bd = d; best = t; }
+    }
+    MP.Naval.launchTransport(n, best, n.troops * (share || 0.3));
   };
 
   AI.onStruck = function (v, attacker, w) {
@@ -7757,6 +8273,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     } else if (S.phase === 'play') {
       MP.Eco.tick(dt);
       MP.War.tick(dt);
+      MP.Div.tick(dt);
       G.resolveCapFalls();
       MP.Naval.tick(dt);
       MP.Weapons.tick(dt);
@@ -8220,8 +8737,37 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     cam.z = R.minZoom() * 1.05;
   };
 
+  // ---------------- adaptive quality (keeps every feature; trades resolution / refresh rates) ----------------
+  const QUAL = {
+    high: { dpr: 2, stripeEvery: 0, skip: 0, labels: 6 },
+    balanced: { dpr: 1.5, stripeEvery: 0.18, skip: 0, labels: 4 },
+    low: { dpr: 1, stripeEvery: 0.45, skip: 1, labels: 3 },
+  };
+  const ORDER = ['high', 'balanced', 'low'];
+  R.quality = 'high';
+  let frameEma = 16, badFor = 0, goodFor = 0, skipFlip = 0;
+  R.setQuality = function (q) {
+    if (!QUAL[q] || q === R.quality) return;
+    R.quality = q; R.resize(); stripeAge = 99;
+  };
+  R.applyGfxSetting = function () {
+    const s = MP.settings.get('gfx', 'auto');
+    R.gfxMode = s;
+    R.setQuality(s === 'auto' ? (R.quality || 'high') : s);
+  };
+  // called by the main loop with the real cost of the last frame (sim + render)
+  R.reportFrame = function (ms, dt) {
+    frameEma = frameEma * 0.92 + ms * 0.08;
+    if (R.gfxMode !== 'auto') return;
+    const i = ORDER.indexOf(R.quality);
+    if (frameEma > 22) { badFor += dt; goodFor = 0; if (badFor > 2 && i < ORDER.length - 1) { badFor = 0; R.setQuality(ORDER[i + 1]); } }
+    else if (frameEma < 9) { goodFor += dt; badFor = 0; if (goodFor > 12 && i > 0) { goodFor = 0; R.setQuality(ORDER[i - 1]); } }
+    else { badFor = Math.max(0, badFor - dt); goodFor = 0; }
+  };
+  R.frameCost = () => frameEma;
+
   R.resize = function () {
-    DPR = Math.min(2, window.devicePixelRatio || 1);
+    DPR = Math.min(QUAL[R.quality || 'high'].dpr, window.devicePixelRatio || 1);
     VW = window.innerWidth; VH = window.innerHeight;
     cv.width = Math.round(VW * DPR); cv.height = Math.round(VH * DPR);
     cv.style.width = VW + 'px'; cv.style.height = VH + 'px';
@@ -8407,9 +8953,12 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
   }
 
   // ---------------- main draw ----------------
+  let stripeAge = 99, stripeCam = '';
   R.frame = function (dtReal) {
     timeNow += dtReal;
     const S = G.S;
+    const Q = QUAL[R.quality || 'high'];
+    if (Q.skip && cam.tx == null && !R.shake) { skipFlip = (skipFlip + 1) % (Q.skip + 1); if (skipFlip) return; }
     if (cam.tx != null) {
       const k = Math.min(1, dtReal * 4);
       cam.x += (cam.tx - cam.x) * k; cam.y += (cam.ty - cam.y) * k; cam.z += (cam.tz - cam.z) * k;
@@ -8435,16 +8984,21 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
         ctx.drawImage(terrCv, sx0, sy0, sx1 - sx0, sy1 - sy0, dx, dy, dw, dh);
         // fresh (soft) land: crisp screen-space hatching at every zoom level
         const bw = cv.width, bh = cv.height;
-        if (stripeCv.width !== bw || stripeCv.height !== bh) { stripeCv.width = bw; stripeCv.height = bh; }
-        stripeCtx.setTransform(1, 0, 0, 1, 0, 0);
-        stripeCtx.globalCompositeOperation = 'source-over';
-        stripeCtx.clearRect(0, 0, bw, bh);
-        stripeCtx.imageSmoothingEnabled = false;
-        stripeCtx.drawImage(softCv, sx0, sy0, sx1 - sx0, sy1 - sy0, (dx + shx) * DPR, (dy + shy) * DPR, dw * DPR, dh * DPR);
-        stripeCtx.globalCompositeOperation = 'source-in';
-        stripeCtx.fillStyle = stripePat;
-        stripeCtx.fillRect(0, 0, bw, bh);
-        ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 0.33;
+        const camKey = cam.x.toFixed(2) + '|' + cam.y.toFixed(2) + '|' + cam.z.toFixed(4) + '|' + bw + 'x' + bh;
+        stripeAge += dtReal;
+        if (camKey !== stripeCam || stripeAge >= Q.stripeEvery) {
+          stripeCam = camKey; stripeAge = 0;
+          if (stripeCv.width !== bw || stripeCv.height !== bh) { stripeCv.width = bw; stripeCv.height = bh; }
+          stripeCtx.setTransform(1, 0, 0, 1, 0, 0);
+          stripeCtx.globalCompositeOperation = 'source-over';
+          stripeCtx.clearRect(0, 0, bw, bh);
+          stripeCtx.imageSmoothingEnabled = false;
+          stripeCtx.drawImage(softCv, sx0, sy0, sx1 - sx0, sy1 - sy0, dx * DPR, dy * DPR, dw * DPR, dh * DPR);
+          stripeCtx.globalCompositeOperation = 'source-in';
+          stripeCtx.fillStyle = stripePat;
+          stripeCtx.fillRect(0, 0, bw, bh);
+        }
+        ctx.save(); ctx.setTransform(1, 0, 0, 1, shx * DPR, shy * DPR); ctx.globalAlpha = 0.22;
         ctx.drawImage(stripeCv, 0, 0);
         ctx.restore();
       }
@@ -8455,7 +9009,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     ctx.imageSmoothingEnabled = true;
     const P = R.prof;
     const T = P ? (k, fn) => { const t0 = performance.now(); fn(); P[k] = (P[k] || 0) + performance.now() - t0; } : (k, fn) => fn();
-    T('labelsU', () => updateLabels(6));
+    T('labelsU', () => updateLabels(Q.labels));
     T('fallout', drawFallout);
     T('storms', () => drawStorms(true));
     T('roads', drawRoads);
@@ -8466,6 +9020,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     T('convoys', drawConvoys);
     T('ships', drawShips);
     T('capitals', drawCapitals);
+    T('divisions', drawDivisions);
     T('attacks', drawAttacks);
     T('missiles', drawMissiles);
     T('effects', () => drawEffects(dtReal));
@@ -8473,7 +9028,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     T('labels', drawLabels);
     T('cursor', drawCursor);
     miniT -= dtReal;
-    T('mini', () => { if (miniT <= 0) { miniT = 0.4; drawMinimap(); } drawMiniView(); });
+    T('mini', () => { if (miniT <= 0) { miniT = R.quality === 'high' ? 0.5 : 1; drawMinimap(); } drawMiniView(); });
   };
 
   function drawGrid() {
@@ -8781,6 +9336,84 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     }
   }
 
+  // divisions: few, big flags on the line (infantry with artillery/drones, armour with tanks/motorised).
+  // Divisions that sit on top of each other on screen merge into one stack marker (×N) so the line stays readable.
+  function drawDivisions() {
+    const S = G.S, p = G.player();
+    if (!MP.Div) return;
+    const fw = U.clamp(cam.z * 7, 24, 40), fh = Math.round(fw * 0.66);
+    const plan = p && p.divPlan;
+    const vis = [];
+    for (const n of S.nations) {
+      if (!n || !n.alive || !n.divs || !n.divs.length) continue;
+      for (const d of n.divs) {
+        d._sx = null;
+        if (!MP.Div.visibleTo(d, p)) continue;
+        if (!onScreen(d.x, d.y, 50)) continue;
+        const [sx, sy] = R.w2s(d.x, d.y);
+        d._sx = sx; d._sy = sy;
+        vis.push(d);
+      }
+    }
+    // supply lines from factory / hub while planning
+    if (plan) for (const d of vis) {
+      if (d.owner !== p.id || !d.src) continue;
+      const [ax, ay] = R.w2s(d.src.x, d.src.y);
+      ctx.strokeStyle = 'rgba(255,210,31,0.28)'; ctx.setLineDash([3, 5]); ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(d._sx, d._sy); ctx.stroke(); ctx.setLineDash([]);
+    }
+    // screen-space clustering per owner
+    const groups = [];
+    const near = fw * 0.85;
+    for (const d of vis) {
+      let g = null;
+      for (const q of groups) if (q.owner === d.owner && Math.abs(q.sx - d._sx) < near && Math.abs(q.sy - d._sy) < near * 0.8) { g = q; break; }
+      if (!g) { g = { owner: d.owner, sx: d._sx, sy: d._sy, list: [] }; groups.push(g); }
+      g.list.push(d);
+    }
+    for (const g of groups) {
+      const n = S.nations[g.owner];
+      const flag = MP.Flags.canvas(n.flag, 60, 40);
+      const mine = p && n.id === p.id;
+      const list = g.list, lead = list[0];
+      const sx = g.sx, sy = g.sy;
+      const size = list.reduce((a, d) => a + d.size, 0);
+      const arm = list.filter((d) => d.type === 'arm').length;
+      const trained = list.every((d) => d.trainedFull), unsup = list.some((d) => !d.supplied);
+      const fx = sx - fw / 2, fy = sy - fh - 8;
+      // stacked flags peek out behind the lead one
+      for (let k = Math.min(2, list.length - 1); k >= 1; k--) { ctx.globalAlpha = 0.7; ctx.drawImage(flag, fx + k * 4, fy - k * 4, fw, fh); ctx.globalAlpha = 1; ctx.strokeStyle = 'rgba(10,10,8,0.9)'; ctx.lineWidth = 1; ctx.strokeRect(fx + k * 4 + 0.5, fy - k * 4 + 0.5, fw - 1, fh - 1); }
+      ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(fx + 2, fy + 2, fw, fh);
+      ctx.fillStyle = '#d8d2bc'; ctx.fillRect(sx - 1, fy, 2, fh + 8);
+      ctx.drawImage(flag, fx, fy, fw, fh);
+      ctx.lineWidth = trained ? 2 : 1;
+      ctx.strokeStyle = trained ? '#ffd21f' : unsup ? '#ff4433' : 'rgba(10,10,8,0.9)';
+      if (unsup && !trained) ctx.setLineDash([3, 2]);
+      ctx.strokeRect(fx + 0.5, fy + 0.5, fw - 1, fh - 1); ctx.setLineDash([]);
+      if (list.length > 1) {
+        ctx.font = `bold 10px ${MP.FONT_MONO}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#0a0a08'; ctx.fillRect(fx + fw - 6, fy - 6, 16, 12); ctx.fillStyle = '#ffd21f'; ctx.fillText('×' + list.length, fx + fw + 2, fy);
+      }
+      // type badge + strength
+      const label = U.fmtK(size);
+      ctx.font = `bold ${Math.round(U.clamp(fw * 0.34, 9, 13))}px ${MP.FONT_MONO}`;
+      const tw = ctx.measureText(label).width, bh = Math.round(U.clamp(fw * 0.42, 11, 16));
+      const icons = (arm ? 1 : 0) + (arm < list.length ? 1 : 0);
+      const bw = bh * icons + tw + 8, bx = sx - bw / 2, by = sy - 6;
+      ctx.fillStyle = 'rgba(10,10,8,0.88)'; ctx.fillRect(bx, by, bw, bh);
+      ctx.strokeStyle = mine ? '#ffd21f' : U.rgb(n.color); ctx.lineWidth = 1; ctx.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
+      let ix = bx + 2;
+      if (arm) { MP.Icons.drawGlyph(ctx, 'tank', ix, by + 1, bh - 2, '#ffb000'); ix += bh; }
+      if (arm < list.length) { MP.Icons.drawGlyph(ctx, lead.gear === 'drones' ? 'drone' : 'gun', ix, by + 1, bh - 2, '#ece6cf'); ix += bh; }
+      ctx.fillStyle = '#ece6cf'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.fillText(label, ix + 2, by + bh / 2 + 0.5);
+      const tr = list.find((d) => d.training);
+      if (tr) { ctx.strokeStyle = '#3ee6ff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(sx, fy + fh / 2, fw * 0.62, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * tr.trained); ctx.stroke(); }
+      if (list.some((d) => d.sel)) { ctx.strokeStyle = '#ffd21f'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(sx, fy + fh / 2, fw * 0.75 + Math.sin(timeNow * 6) * 2, 0, 7); ctx.stroke(); }
+      for (const d of list) { d._sx = sx; d._sy = sy; }
+    }
+  }
+
   function pill(sx, sy, text, fg, bg, border) {
     ctx.font = `bold 11px ${MP.FONT_MONO}`;
     const w = ctx.measureText(text).width + 14;
@@ -9084,9 +9717,14 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
       ctx.font = `900 ${px}px ${MP.FONT_HEAD}`;
       const spacing = px * 0.14;
       const text = n.name;
-      const ws = []; let total = 0;
-      for (const ch of text) { const w = ctx.measureText(ch).width; ws.push(w); total += w + spacing; }
-      total -= spacing;
+      // glyph widths are measured once per size and reused (measureText is costly on slow machines)
+      const lk = text + '|' + Math.round(px * 2);
+      if (!n._lw || n._lw.k !== lk) {
+        const w0 = []; let tot = 0;
+        for (const ch of text) { const w = ctx.measureText(ch).width; w0.push(w); tot += w + spacing; }
+        n._lw = { k: lk, ws: w0, total: tot - spacing };
+      }
+      const ws = n._lw.ws, total = n._lw.total;
       const cs = Math.abs(Math.cos(L.ang)), sn = Math.abs(Math.sin(L.ang)), hh = px * 1.75;
       const bw = total * cs + hh * sn, bh = total * sn + hh * cs;
       const box = [sx - bw / 2, sy - bh / 2, sx + bw / 2, sy + bh / 2];
@@ -9155,18 +9793,21 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
   }
 
   // ---------------- minimap ----------------
+  let miniBase = null;
   function drawMinimap() {
     const mw = mini.width, mh = mini.height;
-    miniCtx.imageSmoothingEnabled = true;
-    miniCtx.fillStyle = '#050607'; miniCtx.fillRect(0, 0, mw, mh);
-    miniCtx.drawImage(terrainCv, 0, 0, mw, mh);
-    if (G.S) miniCtx.drawImage(terrCv, 0, 0, mw, mh);
-    R._miniSnap = miniCtx.getImageData(0, 0, mw, mh);
+    if (!miniBase) { miniBase = document.createElement('canvas'); miniBase.width = mw; miniBase.height = mh; }
+    const b = miniBase.getContext('2d');
+    b.imageSmoothingEnabled = true;
+    b.fillStyle = '#050607'; b.fillRect(0, 0, mw, mh);
+    b.drawImage(terrainCv, 0, 0, mw, mh);
+    if (G.S) b.drawImage(terrCv, 0, 0, mw, mh);
+    R._miniSnap = true;
   }
   function drawMiniView() {
-    if (!R._miniSnap) return;
+    if (!R._miniSnap || !miniBase) return;
     const mw = mini.width, mh = mini.height;
-    miniCtx.putImageData(R._miniSnap, 0, 0);
+    miniCtx.drawImage(miniBase, 0, 0);
     const [a, b] = R.s2w(0, 0), [c2, d] = R.s2w(VW, VH);
     const sx = mw / World.W, sy = mh / World.H;
     miniCtx.strokeStyle = '#ffd21f'; miniCtx.lineWidth = 1;
@@ -9236,6 +9877,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     </div>
 
     <div class="hud-bc">
+      <div id="h-front" class="front-panel"></div>
       <div id="h-offers"></div>
       <div class="buildbar" id="h-build"></div>
       <div class="panel stats brk">
@@ -9447,6 +10089,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     if (k === ' ') { e.preventDefault(); MP.Game.setPaused(!MP.Game.paused); return; }
     if (S.opts.mode === 'watch') return;
     const up = k.toUpperCase();
+    if (up === 'T') { HUD.toggleFront(); return; }
     for (const t of C.BUILD_ORDER.concat(C.DEFENSE_ORDER)) if (C.BUILD[t].key === up) { HUD.setBuildMode(t); return; }
     for (const w of C.WEAPON_ORDER) if (C.WEAPON[w].key === up) { HUD.weaponClick(w); return; }
     if (k === '+' || k === '=') { HUD.ratio = Math.min(1, HUD.ratio + 0.05); HUD.syncRatio(); }
@@ -9496,6 +10139,24 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
       if (all) MP.Weapons.launchAll(p, mode.w, H.wx, H.wy); else MP.Weapons.launch(p, mode.w, H.wx, H.wy);
       if (!e.shiftKey) HUD.clearMode();
       return;
+    }
+    // divisions: click one to select it, then click your land to move it (stack by placing it behind another)
+    if (p.divPlan && p.divs) {
+      let hit = null, hd = 22 * 22;
+      for (const d of p.divs) { if (d._sx == null) continue; const dd = (d._sx - H.sx) ** 2 + (d._sy - 14 - H.sy) ** 2; if (dd < hd) { hd = dd; hit = d; } }
+      const selD = p.divs.find((d) => d.sel);
+      if (hit) {
+        // clicking a stack cycles through the divisions in it
+        const stack = p.divs.filter((d) => d._sx === hit._sx && d._sy === hit._sy);
+        const cur = stack.findIndex((d) => d.sel);
+        for (const d of p.divs) d.sel = false;
+        const nxt = stack[(cur + 1) % stack.length];
+        if (cur === stack.length - 1 && stack.length === 1) { MP.SFX.play('close'); return; }
+        nxt.sel = true; MP.SFX.play('click');
+        HUD.toast(`${nxt.type === 'arm' ? 'Armoured' : 'Infantry'} division · ${nxt.gear} · ${U.fmtInt(nxt.size)}${nxt.trainedFull ? ' · trained' : ''} — click your land to move it`, 'info');
+        return;
+      }
+      if (selD && S.owner[H.t] === p.id) { MP.Div.moveTo(selD, H.wx, H.wy); selD.sel = false; MP.SFX.play('send'); return; }
     }
     // select own warship?
     const R = MP.Render;
@@ -9632,6 +10293,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
       opts.push({ id: 'ally', label: 'Ally', icon: 'flag' });
       opts.push({ id: 'truce', label: 'Truce', icon: 'shield', dis: G.hasTruce(p.id, o) });
       opts.push({ id: 'target', label: p.targetId === o ? 'Untarget' : 'Target', icon: 'nuke', dis: !hasFriends });
+      opts.push({ id: 'front', label: p.divPlan && p.divPlan.enemy === o ? 'Stand down' : 'Front (T)', icon: 'tank', dis: !MP.War.bordersWith(p.id, o) });
       opts.push({ id: 'embargo', label: p.embargo.has(o) ? 'Lift' : 'Embargo', icon: 'coin' });
     }
     opts.push({ id: 'focus', label: 'Focus', icon: 'capital' });
@@ -9683,6 +10345,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
       case 'askTroops': MP.Diplo.requestAid(p, n, 'troops'); break;
       case 'askCredits': MP.Diplo.requestAid(p, n, 'credits'); break;
       case 'target': MP.Diplo.setTarget(p, n); HUD.refresh(); break;
+      case 'front': HUD.toggleFront(o); break;
       case 'cede': HUD.confirm(`Demand that ${n.name} cede?`, `${Math.round(MP.Diplo.cedeOdds(p, n) * 100)}% chance it signs everything over to you. If it refuses, it declares independence, goes to war with you and courts your enemies. Each gift you send it adds 5%.`, () => MP.Diplo.requestCede(p, n)); break;
     }
   };
@@ -9726,6 +10389,76 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
       <div class="ni-list"><span>Arsenal</span>${research.length ? research.join(' · ') : '<i class="dim">none known</i>'}</div>
       <div class="ni-list"><span>Allies</span>${allies.length ? allies.map((a) => MP.Flags.img(a.flag, 'flag sm') + ' ' + U.esc(a.name)).join(', ') : '<i class="dim">none</i>'}</div>
       <div class="ni-list"><span>At war with</span>${wars.length ? wars.slice(0, 8).map((a) => U.esc(a.name)).join(', ') : '<i class="dim">nobody</i>'}</div>`);
+  };
+
+  // ---------------- divisions / front planning (T) ----------------
+  HUD.toggleFront = function (forceEnemy) {
+    const S = G.S, p = G.player();
+    if (!S || !p || !p.alive || S.phase !== 'play') return;
+    const H = MP.Render.hover;
+    const o = forceEnemy || (H.t >= 0 ? S.owner[H.t] : 0);
+    if (p.divPlan && (!o || o === p.id || o === p.divPlan.enemy)) {
+      const e = S.nations[p.divPlan.enemy];
+      MP.Div.recall(p); MP.SFX.play('close');
+      HUD.toast(`Divisions stand down from the ${e ? e.name : ''} front`, 'info');
+      HUD.renderFront(true); return;
+    }
+    if (!o || o === p.id) { HUD.toast('Hover a neighbouring nation and press T to man that front', 'info'); return; }
+    const r = MP.Div.togglePlan(p, o);
+    const n = S.nations[o];
+    if (r === 'busy') { HUD.toast(`Your divisions are on the ${S.nations[p.divPlan.enemy].name} front — RECALL them first`, 'bad'); MP.SFX.play('error'); }
+    else if (r === 'nofront') { HUD.toast(G.isAllied(p.id, o) ? 'That nation is your ally' : 'You share no border with ' + n.name, 'bad'); MP.SFX.play('error'); }
+    else if (r === 'on') {
+      MP.SFX.play('attack');
+      MP.Game.wire('IMINT', `YOUR DIVISIONS TAKE UP POSITIONS FACING ${n.name}${p.divPlan.prepared ? '' : ' · UNDER FIRE, NO TIME TO PREPARE'}`, p.divPlan.prepared ? 'good' : 'bad');
+      MP.Game.notify('front.plan', { nation: n.name, text: p.divPlan.prepared ? `Divisions on the ${n.name} line. If they come, we are ready for them.` : `Divisions moving up under fire. No time to dig in properly.`, priority: 1 });
+    }
+    HUD.renderFront(true);
+  };
+  let frontSig = '';
+  HUD.renderFront = function (force) {
+    const S = G.S, p = G.player(), box = els['h-front'];
+    if (!box) return;
+    if (!S || !p || !p.alive || S.opts.mode === 'watch' || S.phase !== 'play') { box.innerHTML = ''; frontSig = ''; return; }
+    const divs = p.divs || [];
+    const plan = p.divPlan;
+    const arm = divs.filter((d) => d.type === 'arm').length, inf = divs.length - arm;
+    const untrained = divs.filter((d) => !d.trainedFull && !d.training).length;
+    const training = divs.filter((d) => d.training).length;
+    const total = divs.reduce((a, d) => a + d.size, 0);
+    const sig = [plan ? plan.enemy + ':' + plan.prepared : 0, divs.length, arm, untrained, training, p.divLevel || 0, Math.round(total / 500), Math.round(p.credits / 1000)].join('|');
+    if (!force && sig === frontSig) return;
+    frontSig = sig;
+    if (!plan) {
+      box.innerHTML = divs.length ? `<div class="fp-mini"><img class="ico" src="${MP.Icons.url('tank', '#ffd21f', 32)}"> ${divs.length} DIVISIONS · ${U.fmtK(total)} · <span class="dim">PRESS T ON A NEIGHBOUR TO MAN THAT FRONT</span></div>` : '';
+      return;
+    }
+    const e = S.nations[plan.enemy];
+    const tc = MP.Div.trainCost(p) * untrained, uc = MP.Div.upgradeCost(p), rc = MP.Div.raiseCost(p);
+    box.innerHTML = `<div class="fp panel brk">
+      <div class="fp-h"><span class="t">⚑ FRONT</span> ${MP.Flags.img(e.flag, 'flag xs')} <b>${U.esc(e.name)}</b>
+        <span class="dim">${divs.length} DIVISIONS · ${inf} INF · ${arm} ARM · ${U.fmtK(total)} TROOPS · LV ${p.divLevel || 0}</span>
+        ${plan.prepared ? '<span class="g">PREPARED +' + (G.has(p, 'ironLine') ? 25 : 15) + '%</span>' : '<span class="amber">UNDER FIRE</span>'}</div>
+      <div class="fp-b">
+        <button class="btn sm" data-fa="train" ${untrained ? '' : 'disabled'}>TRAIN ALL${untrained ? ' · ' + U.fmtK(tc) : training ? ' · ' + training + ' IN TRAINING' : ' · DONE'}</button>
+        <button class="btn sm" data-fa="upgrade">UPGRADE · ${U.fmtK(uc)}</button>
+        <button class="btn sm" data-fa="raise">+1 DIVISION · ${U.fmtK(rc)}</button>
+        <button class="btn sm" data-fa="spread">AUTO-SPREAD</button>
+        <button class="btn sm danger" data-fa="recall">RECALL</button>
+      </div>
+      <div class="fp-hint dim">Click a flag, then click your land to move it · place one behind another to stack (max 3) · T again stands down</div></div>`;
+    box.onclick = (ev) => {
+      const b = ev.target.closest('[data-fa]'); if (!b) return;
+      const a = b.dataset.fa;
+      let r = null;
+      if (a === 'train') r = MP.Div.trainAll(p);
+      if (a === 'upgrade') r = MP.Div.upgrade(p);
+      if (a === 'raise') r = MP.Div.raise(p);
+      if (a === 'spread') { MP.Div.spread(p, plan.enemy, divs.slice().sort((x, y) => (y.type === 'arm') - (x.type === 'arm')), { stack: divs.length > 8 }); MP.SFX.play('send'); }
+      if (a === 'recall') { HUD.toggleFront(plan.enemy); return; }
+      if (r) { if (r.ok) { MP.SFX.play('upgrade'); HUD.toast(a === 'train' ? `Training ${r.count} divisions` : a === 'upgrade' ? `Divisions upgraded to level ${p.divLevel}` : 'New division raised', 'good'); } else { MP.SFX.play('error'); HUD.toast(r.reason, 'bad'); } }
+      HUD.renderFront(true);
+    };
   };
 
   // ---------------- offers / council / directives ----------------
@@ -9928,6 +10661,12 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     return `<svg class="ico" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.6" fill="none" stroke="${col}" stroke-width="1.3"/><line x1="8" y1="8" x2="8" y2="2.6" stroke="${col}" stroke-width="1.3"/><line x1="8" y1="8" x2="${x.toFixed(2)}" y2="${y.toFixed(2)}" stroke="#ffd21f" stroke-width="1.1"/></svg>`;
   }
 
+  // DOM writes only when the value actually changed: no style/layout work for identical refreshes,
+  // and buttons inside the panels aren't rebuilt under the cursor.
+  function setT(el, v) { if (el && el._mpT !== v) { el._mpT = v; el._mpH = undefined; el.textContent = v; } }
+  function setH(el, v) { if (el && el._mpH !== v) { el._mpH = v; el._mpT = undefined; el.innerHTML = v; } }
+  HUD.setT = setT; HUD.setH = setH;
+
   HUD.frame = function (dt) {
     if (!MP.Game.running || !G.S) return;
     refreshT -= dt;
@@ -9940,7 +10679,8 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     });
     if (S.council.active) { const b = document.getElementById('cc-bar'); if (b) b.style.width = (100 * Math.max(0, S.council.active.closes - S.t) / S.council.active.total) + '%'; const t = document.getElementById('cc-t'); if (t) t.textContent = U.fmtTime(S.council.active.closes - S.t); }
     if (refreshT > 0) return;
-    refreshT = 0.15;
+    const q = MP.Render.quality;
+    refreshT = q === 'low' ? 0.3 : q === 'balanced' ? 0.2 : 0.15;
     HUD.refresh();
   };
 
@@ -9948,21 +10688,21 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     const S = G.S, p = G.player(), Game = MP.Game;
     // status
     const d = S.defcon;
-    els['h-defcon'].textContent = 'DEFCON ' + d;
+    setT(els['h-defcon'], 'DEFCON ' + d);
     els['h-defcon'].className = 'defcon d' + d;
     const months = Math.floor(S.t / C.MONTH_SECONDS);
-    els['h-date'].textContent = U.MONTHS[months % 12] + ' ' + (C.START_YEAR + Math.floor(months / 12));
-    els['h-match'].textContent = S.phase === 'spawn' ? U.fmtTime(S.matchSeconds) : U.fmtTime(Game.matchLeft());
+    setT(els['h-date'], U.MONTHS[months % 12] + ' ' + (C.START_YEAR + Math.floor(months / 12)));
+    setT(els['h-match'], S.phase === 'spawn' ? U.fmtTime(S.matchSeconds) : U.fmtTime(Game.matchLeft()));
     const alive = G.alive().length;
-    els['h-alive'].textContent = alive;
-    els['h-clock'].textContent = U.fmtTime(S.clock);
+    setT(els['h-alive'], alive);
+    setT(els['h-clock'], U.fmtTime(S.clock));
     els['h-clock'].className = S.clock < 120 ? 'red' : S.clock < 300 ? 'amber' : '';
-    els['h-clockface'].innerHTML = clockFace(S.clock);
-    if (S.phase === 'spawn') { els['h-peace'].textContent = U.fmtTime(S.spawnLeft); els['h-peace-wrap'].title = 'Choose your spawn'; }
-    else if (S.alienId && !S.alienLanded) { els['h-peace'].textContent = 'LANDFALL ' + U.fmtTime(S.alienLeft != null ? S.alienLeft : S.alienGrace); els['h-peace-wrap'].title = 'The Void Armada lands when this reaches zero'; els['h-peace-ico'].src = MP.Icons.url('orbit', '#7dff5a', 32); }
-    else if (S.defcon === 5 && S.opts.nukes !== false) { els['h-peace'].textContent = U.fmtTime(Game.peaceLeft()); els['h-peace-wrap'].title = 'Peace timer — weapons unlock at DEFCON 4'; }
-    else if (S.opts.council) { els['h-peace'].textContent = S.council.active ? 'VOTE' : U.fmtTime(S.council.next); els['h-peace-wrap'].title = 'Next Global Council session'; els['h-peace-ico'].src = MP.Icons.url('capital', '#ffd21f', 32); }
-    else els['h-peace'].textContent = '—';
+    setH(els['h-clockface'], clockFace(S.clock));
+    if (S.phase === 'spawn') { setT(els['h-peace'], U.fmtTime(S.spawnLeft)); els['h-peace-wrap'].title = 'Choose your spawn'; }
+    else if (S.alienId && !S.alienLanded) { setT(els['h-peace'], 'LANDFALL ' + U.fmtTime(S.alienLeft != null ? S.alienLeft : S.alienGrace)); els['h-peace-wrap'].title = 'The Void Armada lands when this reaches zero'; els['h-peace-ico'].src = MP.Icons.url('orbit', '#7dff5a', 32); }
+    else if (S.defcon === 5 && S.opts.nukes !== false) { setT(els['h-peace'], U.fmtTime(Game.peaceLeft())); els['h-peace-wrap'].title = 'Peace timer — weapons unlock at DEFCON 4'; }
+    else if (S.opts.council) { setT(els['h-peace'], S.council.active ? 'VOTE' : U.fmtTime(S.council.next)); els['h-peace-wrap'].title = 'Next Global Council session'; els['h-peace-ico'].src = MP.Icons.url('capital', '#ffd21f', 32); }
+    else setT(els['h-peace'], '—');
     // spawn banner
     const pupN = S.puppetId ? S.nations[S.puppetId] : null;
     if (S.phase === 'spawn' && p && !HUD.mode) {
@@ -9975,7 +10715,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     const pct = p ? 100 * p.tiles / S.landTotal : 0;
     const bloc = (S.blocSize || 1) > 1 ? S.blocPct || 0 : pct;
     els['h-landbar'].style.width = U.clamp(bloc / S.winPct * 100, 0, 100) + '%';
-    els['h-landpct'].textContent = (S.blocSize || 1) > 1 ? U.fmtPct(pct) + ' · ⛓' + U.fmtPct(bloc) : U.fmtPct(pct);
+    setT(els['h-landpct'], (S.blocSize || 1) > 1 ? U.fmtPct(pct) + ' · ⛓' + U.fmtPct(bloc) : U.fmtPct(pct));
     els['h-landpct'].title = (S.blocSize || 1) > 1 ? `You hold ${U.fmtPct(pct)}; your alliance holds ${U.fmtPct(bloc)}. An alliance must take the whole world; any other bloc reaching ${S.winPct}% ends the match.` : `First to ${S.winPct}% of the world wins.`;
     root.querySelector('.ms.m10').style.left = (10 / S.winPct * 100) + '%';
     root.querySelector('.ms.m25').style.left = (25 / S.winPct * 100) + '%';
@@ -9983,23 +10723,23 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     const H = MP.Render.hover;
     if (H.t >= 0) {
       const [lon, lat] = World.toLonLat(H.x + 0.5, H.y + 0.5);
-      els['h-coord'].textContent = `${Math.abs(lat).toFixed(2)}°${lat >= 0 ? 'N' : 'S'} ${Math.abs(lon).toFixed(2)}°${lon >= 0 ? 'E' : 'W'}`;
+      setT(els['h-coord'], `${Math.abs(lat).toFixed(2)}°${lat >= 0 ? 'N' : 'S'} ${Math.abs(lon).toFixed(2)}°${lon >= 0 ? 'E' : 'W'}`);
       if (World.land[H.t]) {
-        els['h-terrain'].textContent = World.terrainName(H.t);
+        setT(els['h-terrain'], World.terrainName(H.t));
         const dif = World.difficulty(H.t);
-        els['h-pips'].innerHTML = [0, 1, 2].map((i) => `<i class="${i < dif ? 'on' : ''}"></i>`).join('');
-      } else { els['h-terrain'].textContent = World.ocean[H.t] ? 'SEA' : 'LAKE'; els['h-pips'].innerHTML = ''; }
+        setH(els['h-pips'], [0, 1, 2].map((i) => `<i class="${i < dif ? 'on' : ''}"></i>`).join(''));
+      } else { setT(els['h-terrain'], World.ocean[H.t] ? 'SEA' : 'LAKE'); setH(els['h-pips'], ''); }
       const o = S.owner[H.t];
       if (o) {
         const n = S.nations[o];
         const soft = G.isSoft(H.t) || MP.Weapons.inFallout(H.x, H.y);
         const atWar = p && n.wars.has(p.id);
         const allies = Array.from(n.allies).map((a) => S.nations[a]).filter((x) => x && x.alive).slice(0, 6);
-        els['h-ro-nation'].innerHTML = `${MP.Flags.img(n.flag, 'flag sm')} <b style="color:${U.rgb(U.mix(n.color, [255, 255, 255], 0.35))}">${U.esc(n.name)}</b>` +
+        setH(els['h-ro-nation'], `${MP.Flags.img(n.flag, 'flag sm')} <b style="color:${U.rgb(U.mix(n.color, [255, 255, 255], 0.35))}">${U.esc(n.name)}</b>` +
           (atWar ? ' <span class="red">⊕</span>' : '') + ` <span class="dim">≈${U.fmtK(n.troops)}</span> <span class="dim">▣ ${U.fmtK(n.tiles)}</span> ` +
           (soft ? '<span class="soft">SOFT ×1</span>' : `<span class="dug">DUG IN ×${C.DUG_IN_MULT}</span>`) +
-          (allies.length ? `<div class="ro-allies">${allies.map((a) => MP.Flags.img(a.flag, 'flag xs')).join('')}</div>` : '');
-      } else els['h-ro-nation'].innerHTML = World.land[H.t] ? '<span class="dim">UNCLAIMED LAND</span>' : '';
+          (allies.length ? `<div class="ro-allies">${allies.map((a) => MP.Flags.img(a.flag, 'flag xs')).join('')}</div>` : ''));
+      } else setH(els['h-ro-nation'], World.land[H.t] ? '<span class="dim">UNCLAIMED LAND</span>' : '');
     }
     // leaderboard
     const al = G.alive().sort((a, b) => b.tiles - a.tiles);
@@ -10009,21 +10749,21 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     const row = (n, i) => `<div class="lbr ${n === p ? 'me' : ''} ${n.partner ? 'partner' : ''}"><span>${n === p ? '›' : ''} ${i + 1}</span><span class="nm">${MP.Flags.img(n.flag, 'flag xs')} ${U.esc(n.name)}${n.puppet ? ' <i>PUPPET</i>' : n.isPlayer || n.partner ? ' <i>L' + (MP.Menu ? MP.Menu.level() : 1) + '</i>' : ''}</span><span>${U.fmtPct(100 * n.tiles / S.landTotal)}</span><span>${U.fmtK(n.troops)}</span></div>`;
     top.forEach((n, i) => { rows += row(n, i); });
     if (pRank >= 8) rows += row(p, pRank);
-    els['h-lb-rows'].innerHTML = rows;
+    setH(els['h-lb-rows'], rows);
     // attacks
     if (p) {
       const mine = S.attacks.filter((a) => a.from === p.id && !a.done);
-      els['h-att-count'].textContent = mine.length + ' OUT';
-      els['h-att-rows'].innerHTML = mine.map((a) => {
+      let attHtml = mine.map((a) => {
         const tn = a.to ? S.nations[a.to] : null;
         return `<div class="atr"><span class="nm">${tn ? MP.Flags.img(tn.flag, 'flag xs') + ' ' + U.esc(tn.name) : '<img class="ico" src="' + MP.Icons.url('flag', '#8d8670', 32) + '"> UNCLAIMED LAND'}</span><span class="tr">${U.fmtK(a.troops)}</span><button class="btn sm" data-recall="${a.id}">RECALL</button></div>`;
       }).join('') + S.ships.filter((s) => s.owner === p.id && s.kind === 'transport').map((s) => `<div class="atr"><span class="nm">⛴ TRANSPORT → ${s.target ? U.esc(S.nations[s.target].name) : 'COAST'}</span><span class="tr">${U.fmtK(s.troops)}</span><span></span></div>`).join('');
       const incoming = S.attacks.filter((a) => a.to === p.id && !a.done);
-      els['h-att-rows'].innerHTML += incoming.map((a) => {
+      attHtml += incoming.map((a) => {
         const an = S.nations[a.from];
         return `<div class="atr in"><span class="nm">▼ ${MP.Flags.img(an.flag, 'flag xs')} ${U.esc(an.name)}</span><span class="tr">${U.fmtK(a.troops)}${a.def > 0 ? ' <i class="def">⛨' + U.fmtK(a.def) + '</i>' : ''}</span><button class="btn sm defend" data-defend="${a.id}" title="Commit ${Math.round(HUD.ratio * 100)}% of your troops to hold this front">DEFEND</button></div>`;
       }).join('');
-      els['h-att-count'].textContent = mine.length + ' OUT' + (incoming.length ? ' · ' + incoming.length + ' IN' : '');
+      setH(els['h-att-rows'], attHtml);
+      setT(els['h-att-count'], mine.length + ' OUT' + (incoming.length ? ' · ' + incoming.length + ' IN' : ''));
       els['h-att-rows'].onclick = (e) => {
         const b = e.target.closest('[data-recall]');
         if (b) { const at = S.attacks.find((a) => a.id === Number(b.dataset.recall)); if (at) { MP.War.recall(at); MP.Game.notify('attack.recalled', {}); } return; }
@@ -10037,30 +10777,31 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
       // allied target chip
       const tgt = p.targetId && S.nations[p.targetId];
       const chip = document.getElementById('h-target');
-      if (tgt && tgt.alive) { chip.style.display = ''; chip.innerHTML = `<span class="t">⌖ ALLIED TARGET</span> ${MP.Flags.img(tgt.flag, 'flag xs')} <b>${U.esc(tgt.name)}</b> <button class="btn sm" data-untarget>✕</button>`; chip.onclick = (e) => { if (e.target.closest('[data-untarget]')) MP.Diplo.setTarget(p, tgt); }; }
+      if (tgt && tgt.alive) { chip.style.display = ''; setH(chip, `<span class="t">⌖ ALLIED TARGET</span> ${MP.Flags.img(tgt.flag, 'flag xs')} <b>${U.esc(tgt.name)}</b> <button class="btn sm" data-untarget>✕</button>`); chip.onclick = (e) => { if (e.target.closest('[data-untarget]')) MP.Diplo.setTarget(p, tgt); }; }
       else { chip.style.display = 'none'; if (p.targetId && (!tgt || !tgt.alive)) p.targetId = 0; }
     } else document.getElementById('h-attacks').style.display = 'none';
     // council effects
     const ef = S.council.effects;
     const efEl = els['h-effects'];
-    if (ef.length) { efEl.style.display = ''; efEl.innerHTML = '<div class="ph"><span class="t">COUNCIL MANDATES</span></div>' + ef.map((e) => `<div class="efr"><span>${U.esc(e.name)}${e.target ? ' · ' + U.esc(S.nations[e.target].name) : ''}</span><span>${U.fmtTime(e.until - S.t)}</span></div>`).join(''); }
+    if (ef.length) { efEl.style.display = ''; setH(efEl, '<div class="ph"><span class="t">COUNCIL MANDATES</span></div>' + ef.map((e) => `<div class="efr"><span>${U.esc(e.name)}${e.target ? ' · ' + U.esc(S.nations[e.target].name) : ''}</span><span>${U.fmtTime(e.until - S.t)}</span></div>`).join('')); }
     else efEl.style.display = 'none';
     if (!p) return;
     // stats
-    els['h-troops'].textContent = U.fmtK(p.troops);
-    els['h-cap'].textContent = U.fmtK(p.cap);
-    els['h-grow'].textContent = (p.growth >= 0 ? '+' : '') + U.fmtK(p.growth) + '/s';
+    setT(els['h-troops'], U.fmtK(p.troops));
+    setT(els['h-cap'], U.fmtK(p.cap));
+    setT(els['h-grow'], (p.growth >= 0 ? '+' : '') + U.fmtK(p.growth) + '/s');
     els['h-grow'].className = p.growth >= 0 ? 'pos' : 'neg';
     els['h-troopbar'].style.width = U.clamp(100 * p.troops / p.cap, 0, 100) + '%';
-    els['h-send'].textContent = U.fmtK(p.troops * HUD.ratio);
-    els['h-credits'].textContent = U.fmtK(p.credits);
-    els['h-income'].textContent = '+' + U.fmtK(p.incomeAvg) + '/s';
-    els['h-tiles'].textContent = U.fmtInt(p.tiles);
-    els['h-uranium'].textContent = U.fmtInt(p.uranium);
+    setT(els['h-send'], U.fmtK(p.troops * HUD.ratio));
+    setT(els['h-credits'], U.fmtK(p.credits));
+    setT(els['h-income'], '+' + U.fmtK(p.incomeAvg) + '/s');
+    setT(els['h-tiles'], U.fmtInt(p.tiles));
+    setT(els['h-uranium'], U.fmtInt(p.uranium));
     els['h-uranium'].classList.toggle('capped', !!p.uCapped && p.uranium >= C.URANIUM_CAP_NO_DEPOSIT - 0.5);
     els['h-ubar'].style.width = (p.uCapped ? U.clamp(100 * p.uranium / C.URANIUM_CAP_NO_DEPOSIT, 0, 100) : 100) + '%';
     els['h-ubar'].parentElement.title = p.uCapped ? 'No enrichment plant: uranium capped at 200' : `+${(p.uRate || 0).toFixed(1)} U/s`;
     HUD.syncSlots();
+    HUD.renderFront();
   };
 
   // ---------------- end screen ----------------
@@ -10961,7 +11702,8 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
       <h4>DEFENCES</h4><p>Each defence level adds one more interception shot — nothing else. Each type covers specific warheads: <b>SAM</b> ${Object.entries(def('sam').vs).map(([k, v]) => k + ' ' + Math.round(v * 100) + '%').join(', ')} · <b>ABM</b> ${Object.entries(def('abm').vs).map(([k, v]) => k + ' ' + Math.round(v * 100) + '%').join(', ')} · <b>Laser</b> ${Object.entries(def('laser').vs).map(([k, v]) => k + ' ' + Math.round(v * 100) + '%').join(', ')} · <b>Aegis Net</b> ${Object.entries(def('aegis').vs).map(([k, v]) => k + ' ' + Math.round(v * 100) + '%').join(', ')}. <b>Radar</b> sees launches early; the earlier the warning, the better every interception roll (×${C.WARN.minF} with no warning up to ×${C.WARN.maxF}).</p>
       <h4>DIPLOMACY</h4><p>Alliances share no friendly fire; up to ${C.ALLIANCE_MAX} allies — or bring a party of ${C.PARTY_MAX} bots and forfeit alliances. Bots judge your offers by your position: strength, borders, shared enemies, betrayals. Truces last 3:00. Betrayal is rare but real. Embargoes stop convoys and trade ships.</p>
       <h4>NEW IN MIDNIGHT PROTOCOL</h4><p><b>Doctrines & field directives</b> · <b>Supply lines</b> · <b>Global Council</b> votes every ${C.COUNCIL_INTERVAL / 60} minutes · <b>EMP strikes</b> · <b>Weather fronts</b> · <b>Pause, 1–4× speed and save/resume</b>.</p>
-      <h4>KEYS</h4><p>1–8 build · R T Y U J defences · Z N H I M O E weapons · L launch-all · Space pause · F find capital · WASD/arrows pan · wheel zoom · Esc cancel/settings · +/− attack ratio</p></div>`);
+      <h4>DIVISIONS</h4><p>Your army fights as divisions — infantry (with artillery or drones) and armour (tanks or motorised; a few hundred men that push like thousands, 30% faster, +20% in breakthroughs). They draw on your troop pool, need supply from factories and logistics hubs in range, and change the fight wherever they stand — the gaps between them are real. They stay hidden until you press <b>T</b>, attack or defend; when you are invaded they rush to the line. Press <b>T</b> on a neighbour to man that front: train (×2 once fully trained), upgrade, raise more, or move them by clicking a flag and then your land. A division right behind another stacks (max 3): the lead pushes 10% faster, digs in 33% faster, and the enemy pays 25% more and gains ground 25% slower against it. Divisions already on the line before an enemy attacks defend 15% better. More territory means more divisions; credits make them bigger. <b>RECALL</b> or T again stands them down — a manned front leaves your other borders bare.</p>
+      <h4>KEYS</h4><p>T man / stand down a front · 1–8 build · R G Y U J defences · Z N H I M O E weapons · L launch-all · Space pause · F find capital · WASD/arrows pan · wheel zoom · Esc cancel/settings · +/− attack ratio</p></div>`);
   };
 
   Menu.openSettings = function (inMatch) {
@@ -10982,6 +11724,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
         <button class="btn" id="st-vtest" type="button">TEST VOICE</button>
         <label class="ck"><input type="checkbox" id="st-tut" ${S.get('tutorial', true) ? 'checked' : ''}> TUTORIAL BRIEFINGS</label>
         <label class="ck"><input type="checkbox" id="st-fs" ${S.get('fullscreen', true) ? 'checked' : ''}> AUTO FULLSCREEN</label>
+        <label>GRAPHICS <select id="st-gfx">${[['auto', 'AUTO (ADAPTS TO YOUR MACHINE)'], ['high', 'HIGH'], ['balanced', 'BALANCED'], ['low', 'LOW (WEAK LAPTOPS)']].map(([v, l]) => `<option value="${v}" ${S.get('gfx', 'auto') === v ? 'selected' : ''}>${l}</option>`).join('')}</select><span class="dim small">Now: ${(MP.Render.quality || 'high').toUpperCase()} · nothing is removed, only resolution and refresh rates change</span></label>
       </div>
       ${inMatch ? '' : '<div class="row-btns"><button class="btn danger" data-a="reset">RESET PROGRESS</button></div>'}`,
     (box, close) => {
@@ -11001,6 +11744,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
       vstat();
       box.querySelector('#st-vtest').onclick = () => { MP.audio.unlock(); MP.Advisor && MP.Advisor.setVoiceEnabled(true); const cb = box.querySelector('#st-voice'); if (cb) cb.checked = true; MP.Advisor && MP.Advisor.say('Voice check. Channel is clear.', { priority: 2 }); setTimeout(vstat, 1200); setTimeout(vstat, 4000); };
       box.querySelector('#st-fs').onchange = (e) => { S.set('fullscreen', e.target.checked); if (e.target.checked) MP.enterFullscreen(); };
+      box.querySelector('#st-gfx').onchange = (e) => { S.set('gfx', e.target.value); MP.Render.applyGfxSetting(); };
       box.addEventListener('click', (e) => {
         const b = e.target.closest('[data-a]'); if (!b) return;
         const a = b.dataset.a;
@@ -11094,6 +11838,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
       bootLog('> CHARTING SEA LANES · RAISING TERRAIN');
       await frame();
       MP.HUD.init();
+      MP.Render.applyGfxSetting();
       document.getElementById('hud').style.display = 'none';
       bootLog('> RASTERISING FLAGS · ' + MP.Flags.list.length + ' NATIONS ON FILE');
       await frame();
@@ -11135,6 +11880,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
 
   let last = performance.now(), acc = 0;
   function loop(now) {
+    const work0 = performance.now();
     let dt = (now - last) / 1000;
     last = now;
     if (dt > 0.25) dt = 0.25;
@@ -11160,6 +11906,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
       console.error('[loop]', e);
       if (!loop._errShown) { loop._errShown = true; MP.HUD && MP.HUD.toast('Internal error: ' + e.message, 'bad'); setTimeout(() => { loop._errShown = false; }, 5000); }
     }
+    if (MP.Render.reportFrame && MP.Game.running) MP.Render.reportFrame(performance.now() - work0, dt);
     // the advisor runs isolated: a fault there never stops the game (and vice versa)
     try { if (MP.Advisor && MP.Advisor.update) MP.Advisor.update(dt); } catch (e) { if (!loop._advErr) { loop._advErr = true; console.error('[advisor]', e); } }
     requestAnimationFrame(loop);

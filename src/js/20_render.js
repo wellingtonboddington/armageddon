@@ -41,8 +41,37 @@
     cam.z = R.minZoom() * 1.05;
   };
 
+  // ---------------- adaptive quality (keeps every feature; trades resolution / refresh rates) ----------------
+  const QUAL = {
+    high: { dpr: 2, stripeEvery: 0, skip: 0, labels: 6 },
+    balanced: { dpr: 1.5, stripeEvery: 0.18, skip: 0, labels: 4 },
+    low: { dpr: 1, stripeEvery: 0.45, skip: 1, labels: 3 },
+  };
+  const ORDER = ['high', 'balanced', 'low'];
+  R.quality = 'high';
+  let frameEma = 16, badFor = 0, goodFor = 0, skipFlip = 0;
+  R.setQuality = function (q) {
+    if (!QUAL[q] || q === R.quality) return;
+    R.quality = q; R.resize(); stripeAge = 99;
+  };
+  R.applyGfxSetting = function () {
+    const s = MP.settings.get('gfx', 'auto');
+    R.gfxMode = s;
+    R.setQuality(s === 'auto' ? (R.quality || 'high') : s);
+  };
+  // called by the main loop with the real cost of the last frame (sim + render)
+  R.reportFrame = function (ms, dt) {
+    frameEma = frameEma * 0.92 + ms * 0.08;
+    if (R.gfxMode !== 'auto') return;
+    const i = ORDER.indexOf(R.quality);
+    if (frameEma > 22) { badFor += dt; goodFor = 0; if (badFor > 2 && i < ORDER.length - 1) { badFor = 0; R.setQuality(ORDER[i + 1]); } }
+    else if (frameEma < 9) { goodFor += dt; badFor = 0; if (goodFor > 12 && i > 0) { goodFor = 0; R.setQuality(ORDER[i - 1]); } }
+    else { badFor = Math.max(0, badFor - dt); goodFor = 0; }
+  };
+  R.frameCost = () => frameEma;
+
   R.resize = function () {
-    DPR = Math.min(2, window.devicePixelRatio || 1);
+    DPR = Math.min(QUAL[R.quality || 'high'].dpr, window.devicePixelRatio || 1);
     VW = window.innerWidth; VH = window.innerHeight;
     cv.width = Math.round(VW * DPR); cv.height = Math.round(VH * DPR);
     cv.style.width = VW + 'px'; cv.style.height = VH + 'px';
@@ -228,9 +257,12 @@
   }
 
   // ---------------- main draw ----------------
+  let stripeAge = 99, stripeCam = '';
   R.frame = function (dtReal) {
     timeNow += dtReal;
     const S = G.S;
+    const Q = QUAL[R.quality || 'high'];
+    if (Q.skip && cam.tx == null && !R.shake) { skipFlip = (skipFlip + 1) % (Q.skip + 1); if (skipFlip) return; }
     if (cam.tx != null) {
       const k = Math.min(1, dtReal * 4);
       cam.x += (cam.tx - cam.x) * k; cam.y += (cam.ty - cam.y) * k; cam.z += (cam.tz - cam.z) * k;
@@ -256,16 +288,21 @@
         ctx.drawImage(terrCv, sx0, sy0, sx1 - sx0, sy1 - sy0, dx, dy, dw, dh);
         // fresh (soft) land: crisp screen-space hatching at every zoom level
         const bw = cv.width, bh = cv.height;
-        if (stripeCv.width !== bw || stripeCv.height !== bh) { stripeCv.width = bw; stripeCv.height = bh; }
-        stripeCtx.setTransform(1, 0, 0, 1, 0, 0);
-        stripeCtx.globalCompositeOperation = 'source-over';
-        stripeCtx.clearRect(0, 0, bw, bh);
-        stripeCtx.imageSmoothingEnabled = false;
-        stripeCtx.drawImage(softCv, sx0, sy0, sx1 - sx0, sy1 - sy0, (dx + shx) * DPR, (dy + shy) * DPR, dw * DPR, dh * DPR);
-        stripeCtx.globalCompositeOperation = 'source-in';
-        stripeCtx.fillStyle = stripePat;
-        stripeCtx.fillRect(0, 0, bw, bh);
-        ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 0.33;
+        const camKey = cam.x.toFixed(2) + '|' + cam.y.toFixed(2) + '|' + cam.z.toFixed(4) + '|' + bw + 'x' + bh;
+        stripeAge += dtReal;
+        if (camKey !== stripeCam || stripeAge >= Q.stripeEvery) {
+          stripeCam = camKey; stripeAge = 0;
+          if (stripeCv.width !== bw || stripeCv.height !== bh) { stripeCv.width = bw; stripeCv.height = bh; }
+          stripeCtx.setTransform(1, 0, 0, 1, 0, 0);
+          stripeCtx.globalCompositeOperation = 'source-over';
+          stripeCtx.clearRect(0, 0, bw, bh);
+          stripeCtx.imageSmoothingEnabled = false;
+          stripeCtx.drawImage(softCv, sx0, sy0, sx1 - sx0, sy1 - sy0, dx * DPR, dy * DPR, dw * DPR, dh * DPR);
+          stripeCtx.globalCompositeOperation = 'source-in';
+          stripeCtx.fillStyle = stripePat;
+          stripeCtx.fillRect(0, 0, bw, bh);
+        }
+        ctx.save(); ctx.setTransform(1, 0, 0, 1, shx * DPR, shy * DPR); ctx.globalAlpha = 0.22;
         ctx.drawImage(stripeCv, 0, 0);
         ctx.restore();
       }
@@ -276,7 +313,7 @@
     ctx.imageSmoothingEnabled = true;
     const P = R.prof;
     const T = P ? (k, fn) => { const t0 = performance.now(); fn(); P[k] = (P[k] || 0) + performance.now() - t0; } : (k, fn) => fn();
-    T('labelsU', () => updateLabels(6));
+    T('labelsU', () => updateLabels(Q.labels));
     T('fallout', drawFallout);
     T('storms', () => drawStorms(true));
     T('roads', drawRoads);
@@ -287,6 +324,7 @@
     T('convoys', drawConvoys);
     T('ships', drawShips);
     T('capitals', drawCapitals);
+    T('divisions', drawDivisions);
     T('attacks', drawAttacks);
     T('missiles', drawMissiles);
     T('effects', () => drawEffects(dtReal));
@@ -294,7 +332,7 @@
     T('labels', drawLabels);
     T('cursor', drawCursor);
     miniT -= dtReal;
-    T('mini', () => { if (miniT <= 0) { miniT = 0.4; drawMinimap(); } drawMiniView(); });
+    T('mini', () => { if (miniT <= 0) { miniT = R.quality === 'high' ? 0.5 : 1; drawMinimap(); } drawMiniView(); });
   };
 
   function drawGrid() {
@@ -602,6 +640,84 @@
     }
   }
 
+  // divisions: few, big flags on the line (infantry with artillery/drones, armour with tanks/motorised).
+  // Divisions that sit on top of each other on screen merge into one stack marker (×N) so the line stays readable.
+  function drawDivisions() {
+    const S = G.S, p = G.player();
+    if (!MP.Div) return;
+    const fw = U.clamp(cam.z * 7, 24, 40), fh = Math.round(fw * 0.66);
+    const plan = p && p.divPlan;
+    const vis = [];
+    for (const n of S.nations) {
+      if (!n || !n.alive || !n.divs || !n.divs.length) continue;
+      for (const d of n.divs) {
+        d._sx = null;
+        if (!MP.Div.visibleTo(d, p)) continue;
+        if (!onScreen(d.x, d.y, 50)) continue;
+        const [sx, sy] = R.w2s(d.x, d.y);
+        d._sx = sx; d._sy = sy;
+        vis.push(d);
+      }
+    }
+    // supply lines from factory / hub while planning
+    if (plan) for (const d of vis) {
+      if (d.owner !== p.id || !d.src) continue;
+      const [ax, ay] = R.w2s(d.src.x, d.src.y);
+      ctx.strokeStyle = 'rgba(255,210,31,0.28)'; ctx.setLineDash([3, 5]); ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(d._sx, d._sy); ctx.stroke(); ctx.setLineDash([]);
+    }
+    // screen-space clustering per owner
+    const groups = [];
+    const near = fw * 0.85;
+    for (const d of vis) {
+      let g = null;
+      for (const q of groups) if (q.owner === d.owner && Math.abs(q.sx - d._sx) < near && Math.abs(q.sy - d._sy) < near * 0.8) { g = q; break; }
+      if (!g) { g = { owner: d.owner, sx: d._sx, sy: d._sy, list: [] }; groups.push(g); }
+      g.list.push(d);
+    }
+    for (const g of groups) {
+      const n = S.nations[g.owner];
+      const flag = MP.Flags.canvas(n.flag, 60, 40);
+      const mine = p && n.id === p.id;
+      const list = g.list, lead = list[0];
+      const sx = g.sx, sy = g.sy;
+      const size = list.reduce((a, d) => a + d.size, 0);
+      const arm = list.filter((d) => d.type === 'arm').length;
+      const trained = list.every((d) => d.trainedFull), unsup = list.some((d) => !d.supplied);
+      const fx = sx - fw / 2, fy = sy - fh - 8;
+      // stacked flags peek out behind the lead one
+      for (let k = Math.min(2, list.length - 1); k >= 1; k--) { ctx.globalAlpha = 0.7; ctx.drawImage(flag, fx + k * 4, fy - k * 4, fw, fh); ctx.globalAlpha = 1; ctx.strokeStyle = 'rgba(10,10,8,0.9)'; ctx.lineWidth = 1; ctx.strokeRect(fx + k * 4 + 0.5, fy - k * 4 + 0.5, fw - 1, fh - 1); }
+      ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(fx + 2, fy + 2, fw, fh);
+      ctx.fillStyle = '#d8d2bc'; ctx.fillRect(sx - 1, fy, 2, fh + 8);
+      ctx.drawImage(flag, fx, fy, fw, fh);
+      ctx.lineWidth = trained ? 2 : 1;
+      ctx.strokeStyle = trained ? '#ffd21f' : unsup ? '#ff4433' : 'rgba(10,10,8,0.9)';
+      if (unsup && !trained) ctx.setLineDash([3, 2]);
+      ctx.strokeRect(fx + 0.5, fy + 0.5, fw - 1, fh - 1); ctx.setLineDash([]);
+      if (list.length > 1) {
+        ctx.font = `bold 10px ${MP.FONT_MONO}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#0a0a08'; ctx.fillRect(fx + fw - 6, fy - 6, 16, 12); ctx.fillStyle = '#ffd21f'; ctx.fillText('×' + list.length, fx + fw + 2, fy);
+      }
+      // type badge + strength
+      const label = U.fmtK(size);
+      ctx.font = `bold ${Math.round(U.clamp(fw * 0.34, 9, 13))}px ${MP.FONT_MONO}`;
+      const tw = ctx.measureText(label).width, bh = Math.round(U.clamp(fw * 0.42, 11, 16));
+      const icons = (arm ? 1 : 0) + (arm < list.length ? 1 : 0);
+      const bw = bh * icons + tw + 8, bx = sx - bw / 2, by = sy - 6;
+      ctx.fillStyle = 'rgba(10,10,8,0.88)'; ctx.fillRect(bx, by, bw, bh);
+      ctx.strokeStyle = mine ? '#ffd21f' : U.rgb(n.color); ctx.lineWidth = 1; ctx.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
+      let ix = bx + 2;
+      if (arm) { MP.Icons.drawGlyph(ctx, 'tank', ix, by + 1, bh - 2, '#ffb000'); ix += bh; }
+      if (arm < list.length) { MP.Icons.drawGlyph(ctx, lead.gear === 'drones' ? 'drone' : 'gun', ix, by + 1, bh - 2, '#ece6cf'); ix += bh; }
+      ctx.fillStyle = '#ece6cf'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.fillText(label, ix + 2, by + bh / 2 + 0.5);
+      const tr = list.find((d) => d.training);
+      if (tr) { ctx.strokeStyle = '#3ee6ff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(sx, fy + fh / 2, fw * 0.62, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * tr.trained); ctx.stroke(); }
+      if (list.some((d) => d.sel)) { ctx.strokeStyle = '#ffd21f'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(sx, fy + fh / 2, fw * 0.75 + Math.sin(timeNow * 6) * 2, 0, 7); ctx.stroke(); }
+      for (const d of list) { d._sx = sx; d._sy = sy; }
+    }
+  }
+
   function pill(sx, sy, text, fg, bg, border) {
     ctx.font = `bold 11px ${MP.FONT_MONO}`;
     const w = ctx.measureText(text).width + 14;
@@ -905,9 +1021,14 @@
       ctx.font = `900 ${px}px ${MP.FONT_HEAD}`;
       const spacing = px * 0.14;
       const text = n.name;
-      const ws = []; let total = 0;
-      for (const ch of text) { const w = ctx.measureText(ch).width; ws.push(w); total += w + spacing; }
-      total -= spacing;
+      // glyph widths are measured once per size and reused (measureText is costly on slow machines)
+      const lk = text + '|' + Math.round(px * 2);
+      if (!n._lw || n._lw.k !== lk) {
+        const w0 = []; let tot = 0;
+        for (const ch of text) { const w = ctx.measureText(ch).width; w0.push(w); tot += w + spacing; }
+        n._lw = { k: lk, ws: w0, total: tot - spacing };
+      }
+      const ws = n._lw.ws, total = n._lw.total;
       const cs = Math.abs(Math.cos(L.ang)), sn = Math.abs(Math.sin(L.ang)), hh = px * 1.75;
       const bw = total * cs + hh * sn, bh = total * sn + hh * cs;
       const box = [sx - bw / 2, sy - bh / 2, sx + bw / 2, sy + bh / 2];
@@ -976,18 +1097,21 @@
   }
 
   // ---------------- minimap ----------------
+  let miniBase = null;
   function drawMinimap() {
     const mw = mini.width, mh = mini.height;
-    miniCtx.imageSmoothingEnabled = true;
-    miniCtx.fillStyle = '#050607'; miniCtx.fillRect(0, 0, mw, mh);
-    miniCtx.drawImage(terrainCv, 0, 0, mw, mh);
-    if (G.S) miniCtx.drawImage(terrCv, 0, 0, mw, mh);
-    R._miniSnap = miniCtx.getImageData(0, 0, mw, mh);
+    if (!miniBase) { miniBase = document.createElement('canvas'); miniBase.width = mw; miniBase.height = mh; }
+    const b = miniBase.getContext('2d');
+    b.imageSmoothingEnabled = true;
+    b.fillStyle = '#050607'; b.fillRect(0, 0, mw, mh);
+    b.drawImage(terrainCv, 0, 0, mw, mh);
+    if (G.S) b.drawImage(terrCv, 0, 0, mw, mh);
+    R._miniSnap = true;
   }
   function drawMiniView() {
-    if (!R._miniSnap) return;
+    if (!R._miniSnap || !miniBase) return;
     const mw = mini.width, mh = mini.height;
-    miniCtx.putImageData(R._miniSnap, 0, 0);
+    miniCtx.drawImage(miniBase, 0, 0);
     const [a, b] = R.s2w(0, 0), [c2, d] = R.s2w(VW, VH);
     const sx = mw / World.W, sy = mh / World.H;
     miniCtx.strokeStyle = '#ffd21f'; miniCtx.lineWidth = 1;

@@ -12,7 +12,7 @@ const CSS = ['src/css/main.css', 'src/advisor/advisor.css'];
 const JS = [
   'src/js/00_core.js', 'src/js/01_mapdata.js', 'src/js/01b_countries.js', 'src/js/02_config.js', 'src/js/03_util.js', 'src/js/04_flags.js',
   'src/js/05_sfx.js', 'src/js/06_icons.js', 'src/advisor/advisor.js',
-  'src/js/10_world.js', 'src/js/11_state.js', 'src/js/12_economy.js', 'src/js/13_combat.js', 'src/js/14_naval.js',
+  'src/js/10_world.js', 'src/js/11_state.js', 'src/js/12_economy.js', 'src/js/13_combat.js', 'src/js/13b_divisions.js', 'src/js/14_naval.js',
   'src/js/15_weapons.js', 'src/js/16_diplo.js', 'src/js/17_weather.js', 'src/js/18_ai.js', 'src/js/19_game.js',
   'src/js/20_render.js', 'src/js/21_hud.js', 'src/js/22_menu.js', 'src/js/23_main.js',
 ];

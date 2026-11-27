@@ -121,7 +121,16 @@
     // ---------------- land war ----------------
     if (!capped && S.t - ai.lastAttack > (n.puppet && ai.focus ? 2 : 4) && fill > (n.puppet && ai.focus ? 0.2 : 0.5 - pers.aggro * 0.15)) {
       const target = AI.pickTarget(n, pers);
-      if (target) {
+      // mobilise first: mass divisions on the border (the target can see it coming), then strike
+      if (target && n.divs && n.divs.length && !n.divPlan && (target.isPlayer || S.rng() < 0.25) && !S.attacks.some((x) => !x.done && x.from === n.id && x.to === target.id)) {
+        if (MP.Div.aiPlan(n, target.id, true)) {
+          ai.mobilizeUntil = S.t + 10 + S.rng() * 10;
+          if (target.isPlayer) { MP.Game.wire('IMINT', `${n.name} MOBILISES DIVISIONS ON YOUR BORDER`, 'bad'); MP.Game.notify('attack.mobilise', { nation: n.name, text: `${n.name} is massing divisions on our border. Press T on them to answer.`, priority: 2 }); }
+          ai.lastAttack = S.t;
+        }
+      }
+      const mobilising = ai.mobilizeUntil && S.t < ai.mobilizeUntil;
+      if (target && !mobilising) {
         const ratio = 0.22 + pers.aggro * 0.3;
         // aim the assault: at their capital, or a weak point between forts
         const aim = AI.attackAim(n, target);
@@ -133,6 +142,7 @@
     }
     if (ai.coastal && S.t - ai.lastBoat > 60 && fill > 0.7 && S.rng() < 0.08 * pers.naval + (ai.unclaimed ? 0 : 0.04)) AI.boatAttack(n);
 
+    if (n.divs) MP.Div.aiTick(n);
     // ---------------- strategic weapons ----------------
     AI.strike(n, pers);
 
@@ -271,7 +281,8 @@
     const fill = n.troops / Math.max(1, n.cap);
     const mine = S.attacks.filter((a) => a.from === n.id && !a.done);
     if (ai.unclaimed && fill > 0.12 && !mine.some((a) => a.to === 0)) MP.War.launch(n.id, 0, n.troops * 0.3);
-    if (S.t - ai.lastAttack > 4 && (fill > 0.2 || n.troops > 60000)) {
+    const under = S.attacks.filter((a) => a.to === n.id && !a.done).length;
+    if (S.t - ai.lastAttack > 4 && (fill > 0.2 || n.troops > 60000) && !(under >= 3 && fill < 0.25)) {
       let best = null, bs = -1e9;
       for (const [o, cnt] of ai.neighbors) {
         const e = S.nations[o];
@@ -280,12 +291,16 @@
         if (sc > bs) { bs = sc; best = e; }
       }
       if (best) { const aim = AI.attackAim(n, best); MP.War.launch(n.id, best.id, n.troops * 0.25, aim ? { fx: aim[0], fy: aim[1] } : null); ai.lastAttack = S.t; }
-      else if (S.t - ai.lastBoat > 15) {
-        // nothing left to reach on land: cross the sea toward the nearest nation
-        const cx = n.sx / Math.max(1, n.tiles), cy = n.sy / Math.max(1, n.tiles);
-        const near = G.alive().filter((e) => e.id !== n.id && e.tiles > 20).sort((a, b) => U.dist2(a.capX, a.capY, cx, cy) - U.dist2(b.capX, b.capY, cx, cy))[S.rng.int(3)];
-        if (near) AI.boatAttackOn(n, near); else AI.boatAttack(n);
-      }
+    }
+    // sea invasions: when the continent is ours, several at once; when rich in troops, keep a second front open by sea
+    const afloat = S.ships.filter((s) => s.owner === n.id && s.kind === 'transport').length;
+    const landLocked = !ai.neighbors.size || !Array.from(ai.neighbors.keys()).some((o) => G.canAttack(n.id, o));
+    if ((landLocked && fill > 0.15 && S.t - ai.lastBoat > 6 && afloat < 3) || (!landLocked && fill > 0.5 && under < 3 && S.t - ai.lastBoat > 25 && afloat < 1)) {
+      const cx = n.sx / Math.max(1, n.tiles), cy = n.sy / Math.max(1, n.tiles);
+      const near = G.alive().filter((e) => e.id !== n.id && e.tiles > (landLocked ? 60 : 20) && G.canAttack(n.id, e.id)).sort((a, b) => U.dist2(a.capX, a.capY, cx, cy) - U.dist2(b.capX, b.capY, cx, cy));
+      const tgt = near[S.rng.int(Math.min(landLocked ? 5 : 3, near.length))];
+      if (tgt) AI.boatAttackOn(n, tgt, landLocked ? 0.2 : 0.15); else AI.boatAttack(n);
+      ai.lastBoat = S.t;
     }
     // build up the base at hyper speed
     if (S.t - ai.lastBuild > 1.5) {
@@ -312,16 +327,21 @@
     return e.capital >= 0 ? [e.capX, e.capY] : null;
   };
 
-  AI.boatAttackOn = function (n, f) {
+  AI.boatAttackOn = function (n, f, share) {
     const S = G.S, W = World.W;
     n.ai.lastBoat = S.t;
     const coast = [];
     let k = 0;
     for (const t of f.border) { if (World.coast[t] && (k++ % 5) === 0) coast.push(t); if (coast.length > 60) break; }
     if (!coast.length) return;
+    // nearest shore that has real land behind it (skip islets the beachhead would be stranded on)
     let best = coast[0], bd = 1e18;
-    for (const t of coast) { const d = U.dist2(t % W, (t / W) | 0, n.capX, n.capY); if (d < bd) { bd = d; best = t; } }
-    MP.Naval.launchTransport(n, best, n.troops * 0.3);
+    for (const t of coast) {
+      const mass = MP.Naval.landMass(t, n.id);
+      const d = U.dist2(t % W, (t / W) | 0, n.capX, n.capY) * (mass >= 12 ? 1 : mass >= 6 ? 2.5 : 8);
+      if (d < bd) { bd = d; best = t; }
+    }
+    MP.Naval.launchTransport(n, best, n.troops * (share || 0.3));
   };
 
   AI.onStruck = function (v, attacker, w) {
