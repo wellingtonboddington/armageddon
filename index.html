@@ -9369,13 +9369,14 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     const n = S.nations[o];
     const c = n.color;
     if (G.isBorderTile(t, o)) {
-      // bright border; slight lightening
+      // HAZARD: the border is hazard tape (dark / bright segments); every other pattern: bright border
+      if (n.pattern === 'hazard' && (((x + y) >> 1) & 1)) return pack(22, 20, 14, 255);
       return pack(Math.min(255, c[0] + 55), Math.min(255, c[1] + 55), Math.min(255, c[2] + 55), 255);
     }
     let a = 105;
     let col = c;
     switch (n.pattern) {
-      case 'hazard': if (((x - y + 4096) >> 2) & 1) { col = [c[0] * 0.55 | 0, c[1] * 0.55 | 0, c[2] * 0.55 | 0]; a = 115; } else a = 105; break; // tonal \\ bands (fresh land hatching runs /)
+      case 'hazard': break; // hazard tape lives on the border only: a solid interior never looks like fresh-land hatching
       case 'grid': if (x % 6 === 0 || y % 6 === 0) a = 150; break;
       case 'dots': if (x % 4 === 0 && y % 4 === 0) a = 190; break;
       case 'chevron': if (((x + Math.abs((y % 8) - 4)) % 8) < 2) a = 160; break;
@@ -12114,7 +12115,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     for (let y = 0; y < cv.height; y++) for (let x = 0; x < cv.width; x++) {
       let a = 0.4, col = tc.rgb;
       switch (lo.pattern) {
-        case 'hazard': if (((x + y) >> 3) & 1) { col = [20, 18, 12]; a = 0.6; } else a = 0.75; break;
+        case 'hazard': break; // hazard tape on the border (drawn below)
         case 'grid': a = (x % 6 === 0 || y % 6 === 0) ? 0.8 : 0.35; break;
         case 'dots': a = (x % 4 === 0 && y % 4 === 0) ? 0.9 : 0.35; break;
         case 'chevron': a = ((x + Math.abs((y % 8) - 4)) % 8) < 2 ? 0.8 : 0.35; break;
@@ -12124,6 +12125,7 @@ HK|Hong Kong|f:de2910|flower:fff@0.5,0.5,0.25
     }
     c.restore();
     c.strokeStyle = U.rgb(tc.rgb); c.lineWidth = 2; c.beginPath(); c.ellipse(cv.width / 2, cv.height / 2, cv.width * 0.42, cv.height * 0.38, 0.1, 0, 7); c.stroke();
+    if (lo.pattern === 'hazard') { c.strokeStyle = '#16140e'; c.lineWidth = 3; c.setLineDash([5, 5]); c.beginPath(); c.ellipse(cv.width / 2, cv.height / 2, cv.width * 0.42, cv.height * 0.38, 0.1, 0, 7); c.stroke(); c.setLineDash([]); }
   }
   Menu.drawLoadoutPreview = drawLoadoutPreview;
 

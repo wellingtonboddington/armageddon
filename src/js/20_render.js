@@ -149,13 +149,14 @@
     const n = S.nations[o];
     const c = n.color;
     if (G.isBorderTile(t, o)) {
-      // bright border; slight lightening
+      // HAZARD: the border is hazard tape (dark / bright segments); every other pattern: bright border
+      if (n.pattern === 'hazard' && (((x + y) >> 1) & 1)) return pack(22, 20, 14, 255);
       return pack(Math.min(255, c[0] + 55), Math.min(255, c[1] + 55), Math.min(255, c[2] + 55), 255);
     }
     let a = 105;
     let col = c;
     switch (n.pattern) {
-      case 'hazard': if (((x - y + 4096) >> 2) & 1) { col = [c[0] * 0.55 | 0, c[1] * 0.55 | 0, c[2] * 0.55 | 0]; a = 115; } else a = 105; break; // tonal \\ bands (fresh land hatching runs /)
+      case 'hazard': break; // hazard tape lives on the border only: a solid interior never looks like fresh-land hatching
       case 'grid': if (x % 6 === 0 || y % 6 === 0) a = 150; break;
       case 'dots': if (x % 4 === 0 && y % 4 === 0) a = 190; break;
       case 'chevron': if (((x + Math.abs((y % 8) - 4)) % 8) < 2) a = 160; break;

@@ -444,7 +444,7 @@
     for (let y = 0; y < cv.height; y++) for (let x = 0; x < cv.width; x++) {
       let a = 0.4, col = tc.rgb;
       switch (lo.pattern) {
-        case 'hazard': if (((x + y) >> 3) & 1) { col = [20, 18, 12]; a = 0.6; } else a = 0.75; break;
+        case 'hazard': break; // hazard tape on the border (drawn below)
         case 'grid': a = (x % 6 === 0 || y % 6 === 0) ? 0.8 : 0.35; break;
         case 'dots': a = (x % 4 === 0 && y % 4 === 0) ? 0.9 : 0.35; break;
         case 'chevron': a = ((x + Math.abs((y % 8) - 4)) % 8) < 2 ? 0.8 : 0.35; break;
@@ -454,6 +454,7 @@
     }
     c.restore();
     c.strokeStyle = U.rgb(tc.rgb); c.lineWidth = 2; c.beginPath(); c.ellipse(cv.width / 2, cv.height / 2, cv.width * 0.42, cv.height * 0.38, 0.1, 0, 7); c.stroke();
+    if (lo.pattern === 'hazard') { c.strokeStyle = '#16140e'; c.lineWidth = 3; c.setLineDash([5, 5]); c.beginPath(); c.ellipse(cv.width / 2, cv.height / 2, cv.width * 0.42, cv.height * 0.38, 0.1, 0, 7); c.stroke(); c.setLineDash([]); }
   }
   Menu.drawLoadoutPreview = drawLoadoutPreview;
 
